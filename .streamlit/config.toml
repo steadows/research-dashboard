@@ -1,0 +1,37 @@
+[theme]
+base = "dark"
+primaryColor = "#3B82F6"
+backgroundColor = "#0A0A0A"
+secondaryBackgroundColor = "#111827"
+textColor = "#F9FAFB"
+borderColor = "#1F2937"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"
+buttonRadius = "8px"
+linkUnderline = false
+
+# Typography — Exo headings, Roboto Mono body
+font = "'Roboto Mono':https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap"
+headingFont = "'Exo':https://fonts.googleapis.com/css2?family=Exo:wght@300;400;600;700&display=swap"
+codeFont = "'Roboto Mono':https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap"
+baseFontSize = 14
+baseFontWeight = 400
+codeFontSize = "13px"
+headingFontSizes = ["32px", "24px", "20px", "16px", "14px", "12px"]
+headingFontWeights = [600, 600, 600, 500, 500, 500]
+
+# Semantic colors
+blueColor = "#3B82F6"
+greenColor = "#10B981"
+yellowColor = "#F59E0B"
+redColor = "#EF4444"
+orangeColor = "#F97316"
+violetColor = "#8B5CF6"
+grayColor = "#6B7280"
+
+[theme.sidebar]
+backgroundColor = "#111827"
+secondaryBackgroundColor = "#1F2937"
+textColor = "#F9FAFB"
+borderColor = "#1F2937"
