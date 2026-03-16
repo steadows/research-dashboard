@@ -18,13 +18,15 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _INLINE_FIELD_RE = re.compile(r"^\*\*([^*]+)\*\*:\s*(.+)$", re.MULTILINE)
 
 # Projects excluded from the dashboard — not relevant to active research
-_EXCLUDED_PROJECTS = frozenset({
-    "Data Science Portfolio",
-    "High Tech Pomodoro",
-    "Intent Agent Starter Kit",
-    "Mileneous Years",
-    "Rental Product Recommender",
-})
+_EXCLUDED_PROJECTS = frozenset(
+    {
+        "Data Science Portfolio",
+        "High Tech Pomodoro",
+        "Intent Agent Starter Kit",
+        "Mileneous Years",
+        "Rental Product Recommender",
+    }
+)
 
 
 def parse_projects(vault_path: Path) -> list[dict[str, Any]]:

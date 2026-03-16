@@ -20,44 +20,204 @@ logger = logging.getLogger(__name__)
 # Stop words — generic terms that should not drive matching
 # ---------------------------------------------------------------------------
 
-_STOP_WORDS: frozenset[str] = frozenset({
-    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were",
-    "be", "been", "being", "have", "has", "had", "do", "does", "did",
-    "will", "would", "shall", "should", "may", "might", "must", "can",
-    "could", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-    "as", "into", "through", "during", "before", "after", "above",
-    "below", "between", "under", "about", "against", "without", "within",
-    "it", "its", "this", "that", "these", "those", "i", "you", "we",
-    "they", "he", "she", "my", "your", "our", "their", "what", "which",
-    "who", "how", "when", "where", "why", "if", "then", "than", "so",
-    "not", "no", "nor", "up", "out", "off", "over", "all", "each",
-    "every", "both", "few", "more", "most", "other", "some", "such",
-    "only", "own", "same", "too", "very", "just", "also", "now",
-    # Generic tech/business terms that are too broad for matching
-    "data", "system", "tool", "app", "application", "use", "using",
-    "used", "new", "make", "way", "get", "set", "see", "try", "run",
-    "work", "build", "code", "file", "like", "good", "well", "first",
-    "one", "two", "many", "much", "still", "even", "back", "here",
-    "there", "where", "need", "take", "come", "think", "know",
-})
+_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "can",
+        "could",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "about",
+        "against",
+        "without",
+        "within",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "i",
+        "you",
+        "we",
+        "they",
+        "he",
+        "she",
+        "my",
+        "your",
+        "our",
+        "their",
+        "what",
+        "which",
+        "who",
+        "how",
+        "when",
+        "where",
+        "why",
+        "if",
+        "then",
+        "than",
+        "so",
+        "not",
+        "no",
+        "nor",
+        "up",
+        "out",
+        "off",
+        "over",
+        "all",
+        "each",
+        "every",
+        "both",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "too",
+        "very",
+        "just",
+        "also",
+        "now",
+        # Generic tech/business terms that are too broad for matching
+        "data",
+        "system",
+        "tool",
+        "app",
+        "application",
+        "use",
+        "using",
+        "used",
+        "new",
+        "make",
+        "way",
+        "get",
+        "set",
+        "see",
+        "try",
+        "run",
+        "work",
+        "build",
+        "code",
+        "file",
+        "like",
+        "good",
+        "well",
+        "first",
+        "one",
+        "two",
+        "many",
+        "much",
+        "still",
+        "even",
+        "back",
+        "here",
+        "there",
+        "where",
+        "need",
+        "take",
+        "come",
+        "think",
+        "know",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Multi-word tech names — recognized as single tokens
 # ---------------------------------------------------------------------------
 
 _MULTI_WORD_TERMS: tuple[str, ...] = (
-    "nova act", "aws bedrock", "amazon bedrock", "graph rag",
-    "knowledge graph", "code intelligence", "machine learning",
-    "deep learning", "reinforcement learning", "natural language",
-    "large language model", "language model", "neural network",
-    "computer vision", "prompt engineering", "prompt caching",
-    "fine tuning", "transfer learning", "few shot", "zero shot",
-    "chain of thought", "retrieval augmented", "vector database",
-    "vector store", "time series", "real time", "event driven",
-    "github actions", "ci cd", "google cloud", "azure openai",
-    "open source", "rest api", "web scraping", "data pipeline",
-    "swift ui", "swiftui", "react native", "vue js", "next js",
-    "node js", "ruby on rails", "spring boot", "fast api", "fastapi",
+    "nova act",
+    "aws bedrock",
+    "amazon bedrock",
+    "graph rag",
+    "knowledge graph",
+    "code intelligence",
+    "machine learning",
+    "deep learning",
+    "reinforcement learning",
+    "natural language",
+    "large language model",
+    "language model",
+    "neural network",
+    "computer vision",
+    "prompt engineering",
+    "prompt caching",
+    "fine tuning",
+    "transfer learning",
+    "few shot",
+    "zero shot",
+    "chain of thought",
+    "retrieval augmented",
+    "vector database",
+    "vector store",
+    "time series",
+    "real time",
+    "event driven",
+    "github actions",
+    "ci cd",
+    "google cloud",
+    "azure openai",
+    "open source",
+    "rest api",
+    "web scraping",
+    "data pipeline",
+    "swift ui",
+    "swiftui",
+    "react native",
+    "vue js",
+    "next js",
+    "node js",
+    "ruby on rails",
+    "spring boot",
+    "fast api",
+    "fastapi",
 )
 
 
@@ -262,9 +422,7 @@ def _add_inferred_matches(
         New index dict with both explicit and inferred matches.
     """
     # Build a new index from the existing one
-    result: dict[str, list[dict[str, Any]]] = {
-        k: list(v) for k, v in index.items()
-    }
+    result: dict[str, list[dict[str, Any]]] = {k: list(v) for k, v in index.items()}
 
     # Build lookup of (item_name, source_type) -> set of explicitly linked projects
     explicit_links: dict[tuple[str, str], set[str]] = {}
@@ -365,18 +523,19 @@ def build_smart_project_index(
     combined_index = _add_inferred_matches(explicit_index, all_items, projects)
 
     # Sort items within each project
-    sorted_index = {
-        name: _sort_items(items)
-        for name, items in combined_index.items()
-    }
+    sorted_index = {name: _sort_items(items) for name, items in combined_index.items()}
 
     explicit_count = sum(
-        1 for items in sorted_index.values()
-        for i in items if i.get("match_type") == "explicit"
+        1
+        for items in sorted_index.values()
+        for i in items
+        if i.get("match_type") == "explicit"
     )
     inferred_count = sum(
-        1 for items in sorted_index.values()
-        for i in items if i.get("match_type") == "inferred"
+        1
+        for items in sorted_index.values()
+        for i in items
+        if i.get("match_type") == "inferred"
     )
     logger.debug(
         "Smart index: %d projects, %d explicit, %d inferred",

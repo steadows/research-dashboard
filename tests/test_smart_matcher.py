@@ -8,7 +8,8 @@ class TestExplicitMatches:
     """Explicit wiki-link matches are preserved as Tier 1."""
 
     def test_explicit_matches_have_correct_match_type(
-        self, tmp_vault: Path,
+        self,
+        tmp_vault: Path,
     ) -> None:
         """Items with wiki-links should have match_type='explicit'."""
         from utils.smart_matcher import build_smart_project_index
@@ -16,15 +17,14 @@ class TestExplicitMatches:
         index = build_smart_project_index(str(tmp_vault))
 
         assert "Axon" in index
-        explicit_items = [
-            i for i in index["Axon"] if i["match_type"] == "explicit"
-        ]
+        explicit_items = [i for i in index["Axon"] if i["match_type"] == "explicit"]
         assert len(explicit_items) >= 1
         names = [i["name"] for i in explicit_items]
         assert "Graph RAG for Code Search" in names
 
     def test_explicit_matches_have_confidence_1(
-        self, tmp_vault: Path,
+        self,
+        tmp_vault: Path,
     ) -> None:
         """Explicit matches should always have confidence 1.0."""
         from utils.smart_matcher import build_smart_project_index
@@ -37,7 +37,8 @@ class TestExplicitMatches:
                     assert item["confidence"] == 1.0
 
     def test_explicit_matches_preserve_all_fields(
-        self, tmp_vault: Path,
+        self,
+        tmp_vault: Path,
     ) -> None:
         """Explicit items should retain all original fields plus match_type/confidence."""
         from utils.smart_matcher import build_smart_project_index
@@ -171,8 +172,11 @@ class TestSortOrder:
         if len(ml_items) >= 2:
             # Find first inferred item index
             first_inferred_idx = next(
-                (i for i, item in enumerate(ml_items)
-                 if item["match_type"] == "inferred"),
+                (
+                    i
+                    for i, item in enumerate(ml_items)
+                    if item["match_type"] == "inferred"
+                ),
                 len(ml_items),
             )
             # All explicit items should come before first inferred
