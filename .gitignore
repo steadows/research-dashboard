@@ -35,3 +35,6 @@ status.json
 SESSION_*.md
 ralph.sh
 PROMPT.md
+
+.axon/
+.claude/

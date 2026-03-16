@@ -30,7 +30,7 @@ Sessions 8, 9, and 10 run sequentially — each depends on the prior completing.
 | Verify | `~/.claude/skills/verify/SKILL.md` |
 | Security Review | `~/.claude/skills/security-review/SKILL.md` |
 | LLM Trace | `~/.claude/skills/streamlit-llm-trace/SKILL.md` |
-| Claude API | `~/.claude/skills/claude-api/SKILL.md` |
+| Claude API | _(removed — subprocess rules inlined in Session 9b)_ |
 | Learn Eval | `/everything-claude-code:learn-eval` (ECC plugin) |
 
 ### Streamlit Sub-Skills
@@ -588,6 +588,7 @@ Requires Session 7 complete.
   - `update_workbench_item(tool_name: str, updates: dict, workbench_file: Path = _DEFAULT_WORKBENCH_FILE) -> None`
   - `remove_from_workbench(tool_name: str, workbench_file: Path = _DEFAULT_WORKBENCH_FILE) -> None`
 - Use identical atomic write pattern as `status_tracker.py`: `tempfile.mkstemp` in same dir → write → `os.replace()`
+- Slug generation: reuse `slugify()` from `blog_publisher.py` — do not invent a second naming rule
 - Module-level logger: `logger = logging.getLogger(__name__)`
 
 ### [8c] Dashboard — tool dismiss + workbench buttons [ ]
@@ -611,6 +612,7 @@ Requires Session 7 complete.
   - Action buttons row (placeholders wired in S9–10): `🔍 Research` (disabled if status != "queued"), `🗑️ Remove` (always available)
 - Status badge colors: `queued`→blue, `researching`→amber, `researched`→green, `sandbox_creating`→amber, `sandbox_ready`→emerald, `manual`→orange, `failed`→red
 - `Remove` button: `remove_from_workbench(tool_name)` + `st.rerun()`
+- Parser health panel (bottom of page): show count of items parsed per source (methods, tools, blog queue) and any parser warnings logged during the session — diagnostic visibility, not a gate
 
 ### [8e] Register page + session state in Home.py [ ]
 - In `src/Home.py`:
@@ -644,7 +646,6 @@ Requires Session 8 complete.
 
 ### [9a] TDD — write research agent tests first [ ]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT step-by-step protocol.
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/claude-api/SKILL.md` for subprocess + streaming patterns.
 - `tests/test_research_agent.py`:
   - `launch_research_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
   - `launch_research_agent` creates output dir if missing
@@ -659,8 +660,12 @@ Requires Session 8 complete.
 - [ ] **Verify RED**: `pytest tests/test_research_agent.py -v` — ALL tests FAIL (module not yet created)
 
 ### [9b] src/utils/research_agent.py [ ]
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/claude-api/SKILL.md`. Apply subprocess invocation patterns.
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/streamlit-llm-trace/SKILL.md`. Apply logging conventions for subprocess-based LLM calls.
+- **Subprocess rules** (inline — no external skill dependency):
+  - Invoke `claude -p` as a list arg via `subprocess.Popen` — never use `shell=True` with interpolated strings
+  - Redirect stdout/stderr to `{output_dir}/agent.log` via file handle, not shell redirection
+  - The agent writes `research.md` to disk; `stream-json` output goes to the log file — these are separate outputs
+  - Always verify `shutil.which("claude")` before launch; raise `FileNotFoundError("claude CLI not found in PATH")` if missing
 - `_OPUS_MODEL = "claude-opus-4-6"`
 - `_WORKBENCH_ROOT = Path.home() / "research-workbench"`
 - Public API:
