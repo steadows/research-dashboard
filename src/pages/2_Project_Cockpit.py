@@ -29,8 +29,9 @@ from utils.page_helpers import (
     safe_parse,
 )
 from utils.smart_matcher import build_smart_project_index
-from utils.status_tracker import get_item_status, load_status, set_item_status
+from utils.status_tracker import load_status, set_item_status
 from utils.vault_parser import parse_projects
+from utils.workbench_tracker import add_to_workbench
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +193,10 @@ def _render_project_header(
     st.markdown(f"[:material/open_in_new: Open in Obsidian]({obs_url})")
 
     # GSD plan summary
-    gsd_plan = gsd_plan_text if gsd_plan_text is not None else get_project_gsd_plan(
-        project["name"], vault_path
+    gsd_plan = (
+        gsd_plan_text
+        if gsd_plan_text is not None
+        else get_project_gsd_plan(project["name"], vault_path)
     )
     if gsd_plan:
         with st.expander(
@@ -266,7 +269,7 @@ def _render_item_card_body(item: dict[str, Any]) -> str:
     return body
 
 
-_ITEM_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped"]
+_ITEM_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped", "workbench"]
 
 
 def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -> None:
@@ -282,8 +285,8 @@ def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -
     card_html += "</div>"
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # Action row: status selector + dismiss
-    col_status, col_dismiss = st.columns([3, 1])
+    # Action row: status selector + workbench + dismiss
+    col_status, col_workbench, col_dismiss = st.columns([2, 1, 1])
 
     with col_status:
         safe_idx = (
@@ -300,6 +303,18 @@ def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -
         )
         if new_status != current_status:
             set_item_status(item_id, new_status, _STATUS_FILE)
+
+    with col_workbench:
+        disabled = current_status == "workbench"
+        if st.button(
+            "🔬 Workbench",
+            key=f"cockpit__item_workbench_{item.get('source_type', 'item')}_{item['name']}",
+            disabled=disabled,
+            use_container_width=True,
+        ):
+            add_to_workbench(item, previous_status=current_status)
+            set_item_status(item_id, "workbench", _STATUS_FILE)
+            st.rerun()
 
     with col_dismiss:
         if st.button(
@@ -571,16 +586,20 @@ def _render_context_sources(
         # File list
         vault_str = str(vault_path)
         project_rel = f"Projects/{project['name']}.md"
-        file_lines = [f'📄 <code>{project_rel}</code>']
+        file_lines = [f"📄 <code>{project_rel}</code>"]
         for _, plan_path in plan_files:
             plan_rel = str(plan_path).replace(vault_str + "/", "")
-            file_lines.append(f'📄 <code>{plan_rel}</code>')
+            file_lines.append(f"📄 <code>{plan_rel}</code>")
 
         st.markdown(
-            f'<div style="font-size:0.8rem;color:#9CA3AF;margin-bottom:8px">'
-            f'<strong style="color:#D1D5DB">Files on tap</strong><br>'
+            '<div style="font-size:0.8rem;color:#9CA3AF;margin-bottom:8px">'
+            '<strong style="color:#D1D5DB">Files on tap</strong><br>'
             + "<br>".join(file_lines)
-            + ("" if plan_files else "<br><span style='color:#6B7280'>⚠ No plan files linked in ## Plans section</span>")
+            + (
+                ""
+                if plan_files
+                else "<br><span style='color:#6B7280'>⚠ No plan files linked in ## Plans section</span>"
+            )
             + "</div>",
             unsafe_allow_html=True,
         )
@@ -591,10 +610,14 @@ def _render_context_sources(
             st.code(overview, language=None)
 
         if gsd_context:
-            st.caption("GSD context (Context + Architecture sections + active work headers)")
+            st.caption(
+                "GSD context (Context + Architecture sections + active work headers)"
+            )
             st.code(gsd_context, language=None)
         elif plan_files:
-            st.caption("⚠ No Context / Architecture sections or incomplete headers found in plan files.")
+            st.caption(
+                "⚠ No Context / Architecture sections or incomplete headers found in plan files."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +659,8 @@ def _run_cockpit() -> None:
     # Combined GSD plan text for header UI expander (all plans concatenated)
     combined_plan_text = (
         "\n\n---\n\n".join(f"# {name}\n\n{text}" for name, text in plan_texts)
-        if plan_texts else None
+        if plan_texts
+        else None
     )
 
     # Build enriched project dict for LLM context

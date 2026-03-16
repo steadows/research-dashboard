@@ -722,7 +722,7 @@ def _handle_workbench_button(
         key=f"dashboard__tool_workbench_{tool['name']}",
         disabled=disabled,
     ):
-        add_to_workbench(tool)
+        add_to_workbench(tool, previous_status=current_status)
         set_item_status(item_id, "workbench")
         st.rerun()
 

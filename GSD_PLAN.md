@@ -1,6 +1,6 @@
 # GSD Plan: Research Intelligence Dashboard
 
-> **Created:** 2026-03-14 | **Revised:** 2026-03-15 | **Stack:** Python 3.11 · Streamlit · Anthropic SDK · PyYAML
+> **Created:** 2026-03-14 | **Revised:** 2026-03-16 | **Stack:** Python 3.11 · Streamlit · Anthropic SDK · PyYAML
 > **Reference:** `Plans/Research Intelligence System.md` (Obsidian) — full design spec
 
 ---
@@ -17,7 +17,7 @@
 After each session completes, start a **new** Claude Code session for the next one.
 
 Sessions 3 and 4 can run concurrently (separate terminal windows) after Session 2.
-Sessions 8, 9, and 10 run sequentially — each depends on the prior completing.
+Sessions 8, 9, 10, and 11 run sequentially — each depends on the prior completing.
 
 ---
 
@@ -30,7 +30,7 @@ Sessions 8, 9, and 10 run sequentially — each depends on the prior completing.
 | Verify | `/steadows-verify` |
 | Security Review | `/steadows-security-review` |
 | LLM Trace | `~/.claude/skills/streamlit-llm-trace/SKILL.md` |
-| Claude API | _(removed — subprocess rules inlined in Session 9b)_ |
+| Claude API | _(removed — subprocess rules inlined in Session 10b)_ |
 | Learn Eval | `/everything-claude-code:learn-eval` (ECC plugin) |
 
 ### Streamlit Sub-Skills
@@ -100,8 +100,9 @@ Session 1 (Setup + Design)
                                                             └── Session 6 (Polish + Ship)
                                                                       └── Session 7 (Prompt Quality Audit + Context Enrichment)
                                                                                 └── Session 8 (Workbench Page + Tool Dismiss)
-                                                                                          └── Session 9 (Research Agent)
-                                                                                                    └── Session 10 (Sandbox + Vault Note)
+                                                                                          └── Session 9 (Methods Workbench — Schema Generalization)
+                                                                                                    └── Session 10 (Research Agent)
+                                                                                                              └── Session 11 (Sandbox + Vault Note)
 ```
 
 ---
@@ -549,7 +550,7 @@ git commit -m "feat: prompt quality audit — paper context enrichment, cache ve
 
 ---
 
-## Session 8: Workbench Page + Tool Dismiss [~]
+## Session 8: Workbench Page + Tool Dismiss [x]
 
 Requires Session 7 complete.
 
@@ -609,7 +610,7 @@ Requires Session 7 complete.
 - Per-item card (surface-card HTML):
   - Tool name (bold), category badge (color from `_CATEGORY_COLORS`), status badge (color-coded per status)
   - Synthesis line — `summarize_tool(tool)` result if already in `st.session_state`, else `st.caption("Run research to generate summary")`
-  - Action buttons row (placeholders wired in S9–10): `🔍 Research` (disabled if status != "queued"), `🗑️ Remove` (always available)
+  - Action buttons row (placeholders wired in S10–11): `🔍 Research` (disabled if status != "queued"), `🗑️ Remove` (always available)
 - Status badge colors: `queued`→blue, `researching`→amber, `researched`→green, `sandbox_creating`→amber, `sandbox_ready`→emerald, `manual`→orange, `failed`→red
 - `Remove` button: `remove_from_workbench(tool_name)` + `st.rerun()`
 - Parser health panel (bottom of page): show count of items parsed per source (methods, tools, blog queue) and any parser warnings logged during the session — diagnostic visibility, not a gate
@@ -627,10 +628,10 @@ Requires Session 7 complete.
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [x] **Verify**: Run `/steadows-verify`. Build PASS, lint clean, format clean, 192/192 tests PASS, workbench_tracker 95% coverage, secrets 0 found. Code review: fixed XSS in nav counters (safe_html on current_status), extracted CATEGORY_COLORS to page_helpers (DRY), fixed redundant get_workbench_items call, added field allowlist to update_workbench_item. Security review: no CRITICAL/HIGH, M1 field allowlist added, L2 XSS fixed. 1_Dashboard.py at 907 lines (pre-existing 873, acknowledged — Tools Radar extraction deferred). Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
+- [x] **Verify**: Run `/steadows-verify`. Build PASS, lint clean, format clean, 192/192 tests PASS, workbench_tracker 95% coverage, secrets 0 found. Code review: fixed XSS in nav counters (safe_html on current_status), extracted CATEGORY_COLORS to page_helpers (DRY), fixed redundant get_workbench_items call, added field allowlist to update_workbench_item. Security review: no CRITICAL/HIGH, M1 field allowlist added, L2 XSS fixed. 1_Dashboard.py at 907 lines (pre-existing 873, acknowledged — Tools Radar extraction deferred). Checkpoint: `.context/snapshots/2026-03-16-13-20.md`. Verdict: PASS.
+- [x] **Learn Eval**: `/everything-claude-code:learn-eval` — extracted `json-state-update-allowlist` pattern → `~/.claude/skills/learned/`.
 
-### [8h] Commit [~]
+### [8h] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: workbench page — tool dismiss, send-to-workbench, queue view"
@@ -638,11 +639,97 @@ git commit -m "feat: workbench page — tool dismiss, send-to-workbench, queue v
 
 ---
 
-## Session 9: Research Agent [ ]
+## Session 9: Methods Workbench — Schema Generalization [~]
 
 Requires Session 8 complete.
 
-### [9a] TDD — write research agent tests first [ ]
+Extends the workbench to support **methods** (from Project Cockpit) in addition to tools.
+Methods are **queue-only** in this session — they can be added, viewed, and removed, but
+`🔍 Research` stays disabled for methods until Sessions 10–11 are generalized with
+source-type-specific prompts.
+
+Full design: `~/.claude/plans/noble-roaming-squirrel.md`
+
+### [9a] TDD — write methods workbench tests first [x]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- Extend `tests/test_workbench_tracker.py`:
+  - Add `_sample_method()` helper returning a minimal method dict (`source_type: "method"`)
+  - `add_to_workbench` creates namespaced key `method::Graph RAG` for methods, `tool::Cursor Tab` for tools
+  - `add_to_workbench` stores `source_item_id` and `previous_status` as creation-time metadata
+  - `get_workbench_item` with full key returns correct entry
+  - Legacy bare-name lookup returns entry when unambiguous, `None` when ambiguous (tool + method share name)
+  - `remove_from_workbench` restores source status via `previous_status` (using injectable `status_file` pointed at `tmp_path`)
+  - `update_workbench_item` rejects `source_item_id` and `previous_status` (not in `_ALLOWED_UPDATE_FIELDS`)
+  - Tool and method with same name coexist without collision
+  - `get_slug` with `source_type` prefix: `tool-cursor-tab`, `method-graph-rag`
+  - `make_item_key("method", "Graph RAG")` returns `"method::Graph RAG"`
+  - Read-time normalization: legacy entry with `"tool"` field reads as `"item"` field
+- [ ] **Verify RED**: `pytest tests/test_workbench_tracker.py -v` — new tests FAIL
+
+### [9b] src/utils/workbench_tracker.py — schema generalization [x]
+- **Namespaced keys**: `{source_type}::{name}` format via `make_item_key(source_type, name)` helper
+- **Generalized entry schema**: rename `"tool"` field → `"item"`, add `"source_type"`, `"source_item_id"`, `"previous_status"`
+- `_build_entry(item, source_item_id, previous_status)` — creation-time provenance fields
+- `add_to_workbench(item, previous_status="new", workbench_file=...)` — generic, uses namespaced keys
+- `remove_from_workbench(key, workbench_file=..., status_file=...)` — restores source status via `set_item_status(source_item_id, previous_status, status_file)`
+- `get_slug(name, source_type="tool")` — prefixes slug: `tool-graph-rag`, `method-graph-rag`
+- **Immutability**: `source_item_id` and `previous_status` are NOT in `_ALLOWED_UPDATE_FIELDS`
+- **Legacy compat**: `_load_workbench` normalizes legacy entries (bare keys → `tool::` prefix inferred, `"tool"` field → `"item"`)
+- Bare-name lookup: legacy read shim only — ambiguity returns `None` with warning
+
+### [9c] src/pages/3_Workbench.py — generalized rendering [x]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply badge patterns.
+- **Loop variable**: `for wb_key, entry in items.items()` — use `wb_key` (not bare name) for ALL widget keys, button keys, session state keys
+- **Display name**: derive from `entry["item"]["name"]` (with fallback `entry.get("tool", {}).get("name", wb_key)` for legacy)
+- **Source type badge**: `entry.get("source_type")` — method = purple `#8B5CF6`, tool = green `#10B981` (reuse cockpit colors)
+- **Summary key**: `workbench__summary_{wb_key}` — keyed off workbench key, not display name
+- **Remove/Research button keys**: `workbench__remove_{wb_key}`, `workbench__research_{wb_key}`
+- **Research disabled for methods**: `st.button("🔍 Research", disabled=status != "queued" or source_type == "method")`
+- For methods: show `"why it matters"` or `"description"` from item dict instead of LLM summary
+- Update empty state message: "No items in workbench yet. Use 🔬 Workbench on any tool or method to add one."
+
+### [9d] src/pages/2_Project_Cockpit.py — workbench button on item cards [x]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply key-only widget patterns.
+- Add `"workbench"` to `_ITEM_STATUS_OPTIONS`
+- Import `add_to_workbench`, `make_item_key` from `workbench_tracker`
+- Expand `_render_item_card` action row from 2 columns to 3: `col_status, col_workbench, col_dismiss`
+- `🔬 Workbench` button: disabled when `current_status == "workbench"`; on click → `add_to_workbench(item, previous_status=current_status)`, `set_item_status(item_id, "workbench")`, `st.rerun()`
+
+### [9e] src/pages/1_Dashboard.py — align with new API [x]
+- Update `_handle_workbench_button` to pass `previous_status=current_status` to `add_to_workbench`
+- No change to how `item_id` is constructed for `status_tracker` (keep existing `f"tool::{tool['name']}"` pattern)
+- Status tracker IDs and workbench keys remain conceptually separate
+
+### [9f] Verify GREEN [x]
+- [x] Run `pytest tests/test_workbench_tracker.py -v` — 35/35 PASS (old + new)
+- [x] Run `pytest tests/ -v --tb=short` — 212/212 full suite passes
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — workbench_tracker 97%, utils total 77%
+
+### [9g] Quality Gate [~]
+
+**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `workbench_tracker.py` schema changes, `3_Workbench.py` wb_key keying, `2_Project_Cockpit.py` new button) and security review (focus: no bare-name ambiguity exploits, status restore uses allowlisted fields only). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
+
+### [9h] Commit [ ]
+```bash
+git add src/ tests/ GSD_PLAN.md
+git commit -m "feat: methods workbench — namespaced keys, generalized schema, provenance restore, cockpit workbench button"
+```
+
+---
+
+## Session 10: Research Agent [ ]
+
+Requires Session 9 complete.
+
+> **Note**: Methods exist in the workbench as queue-only (added in Session 9). The research
+> pipeline in this session is still tool-specific. When generalizing to support methods,
+> add source-type-specific prompts (methods don't have `## How to Install`) and
+> source-type-aware output directory naming (use `get_slug(name, source_type)`).
+
+### [10a] TDD — write research agent tests first [ ]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_research_agent.py`:
   - `launch_research_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
@@ -657,7 +744,7 @@ Requires Session 8 complete.
   - `render_research_html` returns Path to generated file
 - [ ] **Verify RED**: `pytest tests/test_research_agent.py -v` — ALL tests FAIL (module not yet created)
 
-### [9b] src/utils/research_agent.py [ ]
+### [10b] src/utils/research_agent.py [ ]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/streamlit-llm-trace/SKILL.md`. Apply logging conventions for subprocess-based LLM calls.
 - **Subprocess rules** (inline — no external skill dependency):
   - Invoke `claude -p` as a list arg via `subprocess.Popen` — never use `shell=True` with interpolated strings
@@ -694,7 +781,7 @@ Requires Session 8 complete.
 - **`parse_research_output()`**: read `research.md`, find `## Programmatic Assessment` section, check first word of body for YES/NO. Return `{"experiment_type": "programmatic"|"manual"|None, "summary": str}` where summary is the `## Overview` section text.
 - Module-level logger: `logger = logging.getLogger(__name__)`
 
-### [9c] Workbench page — Research button + log tail + review gate [ ]
+### [10c] Workbench page — Research button + log tail + review gate [ ]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/building-streamlit-llm-apps/SKILL.md`. Apply streaming/polling UI patterns.
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply key-only widget patterns.
 - Wire `🔍 Research` button in `3_Workbench.py`:
@@ -708,22 +795,22 @@ Requires Session 8 complete.
   - `📄 Open Full Report` button → `subprocess.Popen(["open", str(research_html_path)])` (macOS `open`)
   - `📊 View Inline` expander → `st.markdown(research_md.read_text())`
   - `experiment_type == "programmatic"` and NOT `reviewed`: show `✅ Ready to Experiment` button → `update_workbench_item(name, {"reviewed": True})` + `st.rerun()`
-  - `experiment_type == "programmatic"` and `reviewed == True`: show `🧪 Start Sandbox` button (wired in S10)
+  - `experiment_type == "programmatic"` and `reviewed == True`: show `🧪 Start Sandbox` button (wired in S11)
   - `experiment_type == "manual"`: show orange `Manual Evaluation` badge + setup steps from `## Experiment Design` section. No sandbox button — ever.
 - Status `"failed"`: show red error banner + last 10 lines of `agent.log`
 
-### [9d] Verify GREEN [ ]
+### [10d] Verify GREEN [ ]
 - [ ] Run `pytest tests/test_research_agent.py -v` — ALL tests PASS
 - [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — full suite passes, coverage ≥ 80%
 
-### [9e] Quality Gate [ ]
+### [10e] Quality Gate [ ]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
 - [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `research_agent.py`, `3_Workbench.py`) and security review (focus: subprocess injection — prompt as list arg, no shell=True with f-string, no user-controlled subprocess args, log files in controlled paths). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [9f] Commit [ ]
+### [10f] Commit [ ]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/manual assessment, review gate"
@@ -731,11 +818,15 @@ git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/
 
 ---
 
-## Session 10: Sandbox Project + Docker + Vault Note [ ]
+## Session 11: Sandbox Project + Docker + Vault Note [ ]
 
-Requires Session 9 complete.
+Requires Session 10 complete.
 
-### [10a] TDD — write sandbox agent + vault writer tests first [ ]
+> **Note**: Methods exist in the workbench as queue-only (added in Session 9). The sandbox
+> pipeline in this session is still tool-specific. When generalizing, use `get_slug(name, source_type)`
+> for output paths and add method-aware experiment prompts.
+
+### [11a] TDD — write sandbox agent + vault writer tests first [ ]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_sandbox_agent.py`:
   - `launch_sandbox_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
@@ -753,7 +844,7 @@ Requires Session 9 complete.
   - Does not overwrite existing note — raises `FileExistsError` or appends timestamp suffix (choose one, document it)
 - [ ] **Verify RED**: `pytest tests/test_sandbox_agent.py tests/test_vault_writer.py -v` — ALL tests FAIL
 
-### [10b] Extend src/utils/research_agent.py — sandbox agent [ ]
+### [11b] Extend src/utils/research_agent.py — sandbox agent [ ]
 - Add `launch_sandbox_agent(tool: dict, research_md_path: Path, output_dir: Path) -> subprocess.Popen`
 - Reads full `research_md_path` content into the prompt
 - **COSTAR sandbox prompt**:
@@ -770,7 +861,7 @@ Requires Session 9 complete.
   - Safety clause (verbatim in prompt): "Do NOT include `RUN curl | bash`, `RUN wget | sh`, or any other inline shell pipe execution. Only install packages from official PyPI or npm registries. Pin all dependency versions. If the experiment requires network access, document it explicitly in `experiment_plan.md`."
 - Raises `FileNotFoundError` if `research_md_path` does not exist
 
-### [10c] src/utils/vault_writer.py [ ]
+### [11c] src/utils/vault_writer.py [ ]
 - **MANDATORY**: Use the Read tool to read `src/utils/cockpit_components.py` to reuse `build_obsidian_url()` — do not duplicate.
 - Public API:
   ```python
@@ -798,7 +889,7 @@ Requires Session 9 complete.
 - Module-level logger: `logger = logging.getLogger(__name__)`
 - `pathlib.Path` throughout
 
-### [10d] Workbench page — Sandbox button + vault link [ ]
+### [11d] Workbench page — Sandbox button + vault link [ ]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/building-streamlit-llm-apps/SKILL.md`. Apply polling/status patterns.
 - Wire `🧪 Start Sandbox` button (shown only when `experiment_type == "programmatic"` AND `reviewed == True` AND `status == "researched"`):
   - On click: `launch_sandbox_agent(tool, research_md, output_dir)` → save PID + log_file → status = `"sandbox_creating"` → `st.rerun()`
@@ -811,7 +902,7 @@ Requires Session 9 complete.
   - `run.sh` instructions in `st.code()` block
   - `st.code(f"cd {sandbox_dir} && bash run.sh", language="bash")` — copy-able command
 
-### [10e] Round-trip integration tests [ ]
+### [11e] Round-trip integration tests [ ]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT protocol for integration tests.
 - `tests/test_workbench_integration.py`:
   - Full pipeline: `add_to_workbench` → `get_workbench_item` → `update_workbench_item(status="researched")` → `write_sandbox_note` → vault note exists at correct path
@@ -820,27 +911,27 @@ Requires Session 9 complete.
   - Workbench file survives concurrent reads (load twice, compare)
 - [ ] **Verify GREEN**: `pytest tests/test_workbench_integration.py -v` — ALL PASS
 
-### [10f] Full test suite [ ]
-- [ ] `pytest tests/ -v --tb=short` — all tests PASS (prior tests + new S7–10 tests)
+### [11f] Full test suite [ ]
+- [ ] `pytest tests/ -v --tb=short` — all tests PASS (prior tests + new S7–11 tests)
 - [ ] `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
 - [ ] `ruff check src/ tests/` — no errors
 - [ ] `ruff format --check src/ tests/` — no formatting issues
 
-### [10g] Final Quality Gate [ ]
+### [11g] Final Quality Gate [ ]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint PASS, format PASS, full suite PASS, coverage ≥ 80%, secrets PASS (0 found). Includes code review (all Session 8–10 files) and security review (focus: subprocess injection, Dockerfile safety — no `RUN curl|bash`, vault write path inside vault boundary). All CRITICAL/HIGH findings fixed. Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 8–10 for extractable patterns → save to `~/.claude/skills/learned/`.
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint PASS, format PASS, full suite PASS, coverage ≥ 80%, secrets PASS (0 found). Includes code review (all Session 8–11 files) and security review (focus: subprocess injection, Dockerfile safety — no `RUN curl|bash`, vault write path inside vault boundary). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 8–11 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [10h] macOS desktop launcher [ ]
+### [11h] macOS desktop launcher [ ]
 - Create an Automator app (or shell script + `.command` file) that:
   - Activates conda env `research-dashboard`
   - Runs `cd ~/research-dashboard/src && streamlit run Home.py`
   - Opens browser to `localhost:8501`
 - Place in `/Applications/` or Desktop for double-click launch
 
-### [10i] Commit [ ]
+### [11i] Commit [ ]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffolding, vault note writer"
@@ -865,6 +956,11 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | Review gate | `reviewed` flag in workbench.json | Forces deliberate human review before sandbox creation; prevents accidental Docker builds |
 | Sandbox isolation | `--network none` by default in `run.sh` | Security default; experiments document when they need network |
 | Vault note collision | Timestamp suffix on duplicate | Preserves history; never silently overwrites prior research |
+| Workbench key format | `{source_type}::{name}` | Prevents tool/method name collisions; bare-name is legacy read shim only |
+| Workbench entry schema | `"item"` + `"source_type"` + provenance fields | Generalizes from tool-only; `source_item_id` + `previous_status` enable status restore on remove |
+| Methods in workbench | Queue-only in Session 9; pipeline in 10–11 | Avoids breaking tool-specific research prompts; incremental generalization |
+| Provenance immutability | `source_item_id` + `previous_status` not in `_ALLOWED_UPDATE_FIELDS` | Creation-time metadata for undo semantics; no runtime mutation |
+| Workbench slug namespace | `{source_type}-{slug}` | Prevents output path collisions in `~/research-workbench/` |
 | Paper cache storage | `~/.research-dashboard/paper-cache/` (separate from status.json) | Full paper text can be 10-80K chars; stuffing into status.json degrades every cache op |
 | Full text cap | 30K chars (~7.5K tokens) | Keeps Sonnet prompts bounded; semantic section extraction preferred |
 | Cache versioning | Bump suffix on every prompt enrichment change | Prevents stale thin-context outputs from masking enriched prompt results |
@@ -923,10 +1019,10 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | `src/utils/reports_parser.py` | 2 | JournalClub + TLDR parser |
 | `src/utils/status_tracker.py` | 2 | Status + analysis cache |
 | `src/utils/page_helpers.py` | 3, 7 | Shared page utilities; context sources helper |
-| `src/pages/1_Dashboard.py` | 3, 7, 8 | Global intel feed — 5 tabs; context enrichment; tool dismiss + workbench buttons |
+| `src/pages/1_Dashboard.py` | 3, 7, 8, 9 | Global intel feed — 5 tabs; context enrichment; tool dismiss + workbench buttons; previous_status passthrough |
 | `src/utils/claude_client.py` | 4, 7 | Anthropic SDK wrapper + LLM trace; prompt enrichment + cache version bumps |
 | `src/utils/prompt_builder.py` | 4, 7 | Prompt construction; quick analysis project context |
-| `src/pages/2_Project_Cockpit.py` | 5 | Project-scoped workspace |
+| `src/pages/2_Project_Cockpit.py` | 5, 9 | Project-scoped workspace; workbench button on item cards |
 | `src/utils/cockpit_components.py` | 5 | Cockpit UI components |
 | `tests/test_integration.py` | 6 | Round-trip pipeline tests |
 | `src/utils/paper_fetcher.py` | 7 | Unified paper context fetch (abstract + full text) with separate cache |
@@ -934,15 +1030,15 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | `tests/test_prompt_enrichment.py` | 7 | Prompt enrichment + cache versioning tests |
 | `tests/test_dashboard_enrichment.py` | 7 | Dashboard fallback + graceful degradation tests |
 | `requirements.txt` | 7 | `pypdf` added for PDF text extraction |
-| `src/utils/workbench_tracker.py` | 8 | Workbench JSON state CRUD |
-| `src/pages/3_Workbench.py` | 8, 9, 10 | Workbench queue UI; research + sandbox pipeline UI |
-| `tests/test_workbench_tracker.py` | 8 | Workbench tracker unit tests |
-| `src/utils/research_agent.py` | 9, 10 | Research + sandbox subprocess launchers, log tail, HTML render |
-| `tests/test_research_agent.py` | 9 | Research agent unit tests |
-| `tests/test_sandbox_agent.py` | 10 | Sandbox agent unit tests |
-| `src/utils/vault_writer.py` | 10 | Write sandbox vault notes |
-| `tests/test_vault_writer.py` | 10 | Vault writer unit tests |
-| `tests/test_workbench_integration.py` | 10 | Round-trip workbench pipeline integration tests |
+| `src/utils/workbench_tracker.py` | 8, 9 | Workbench JSON state CRUD; namespaced keys, generalized schema, provenance restore |
+| `src/pages/3_Workbench.py` | 8, 9, 10, 11 | Workbench queue UI; generalized rendering; research + sandbox pipeline UI |
+| `tests/test_workbench_tracker.py` | 8, 9 | Workbench tracker unit tests; methods workbench + backward compat tests |
+| `src/utils/research_agent.py` | 10, 11 | Research + sandbox subprocess launchers, log tail, HTML render |
+| `tests/test_research_agent.py` | 10 | Research agent unit tests |
+| `tests/test_sandbox_agent.py` | 11 | Sandbox agent unit tests |
+| `src/utils/vault_writer.py` | 11 | Write sandbox vault notes |
+| `tests/test_vault_writer.py` | 11 | Vault writer unit tests |
+| `tests/test_workbench_integration.py` | 11 | Round-trip workbench pipeline integration tests |
 
 ---
 
