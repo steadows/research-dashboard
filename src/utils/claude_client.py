@@ -15,7 +15,7 @@ from typing import Any
 
 import anthropic
 
-from utils.paper_fetcher import fetch_paper_abstract
+from utils.paper_fetcher import fetch_paper_context
 from utils.prompt_builder import build_deep_prompt, build_quick_prompt
 from utils.status_tracker import get_analysis_cache, set_analysis_cache
 
@@ -277,7 +277,7 @@ def summarize_paper(
     Returns:
         Plain-text summary string, or empty string on error.
     """
-    cache_key = _build_cache_key(item["name"], "", "paper_summary_v2")
+    cache_key = _build_cache_key(item["name"], "", "paper_summary_v3")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -286,6 +286,17 @@ def summarize_paper(
     hook = item.get("hook", "")
     source = item.get("source paper") or item.get("source", "")
     tags = item.get("tags", "")
+    projects = item.get("projects", [])
+
+    # Enrich with paper abstract from Semantic Scholar
+    paper_ctx = fetch_paper_context(source)
+    abstract = paper_ctx.get("abstract", "")
+    abstract_block = (
+        f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+    )
+
+    # Connected projects
+    projects_line = f"Connected Projects: {', '.join(projects)}" if projects else ""
 
     prompt = f"""\
 <context>
@@ -294,7 +305,9 @@ A blogger is skimming a reading list and needs to quickly decide if a paper is w
 Title: {title}
 Hook: {hook}
 Source: {source}
+{abstract_block}
 Tags: {tags}
+{projects_line}
 </context>
 
 <objective>
@@ -345,7 +358,7 @@ def summarize_tool(
     Returns:
         Plain-text summary string, or empty string on error.
     """
-    cache_key = _build_cache_key(tool["name"], "", "tool_summary_v1")
+    cache_key = _build_cache_key(tool["name"], "", "tool_summary_v2")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -354,6 +367,8 @@ def summarize_tool(
     category = tool.get("category", "")
     source = tool.get("source", "")
     what_it_does = tool.get("what it does", "")
+    projects = tool.get("projects", [])
+    projects_line = f"Connected Projects: {', '.join(projects)}" if projects else ""
 
     prompt = f"""\
 <context>
@@ -364,6 +379,7 @@ Tool name: {name}
 Category: {category}
 Source: {source}
 Description: {what_it_does}
+{projects_line}
 </context>
 
 <objective>
@@ -411,7 +427,7 @@ def analyze_blog_potential(
     Returns:
         Analysis result dict with 'response', model, token, cost fields.
     """
-    cache_key = _build_cache_key(item["name"], "", "blog_potential")
+    cache_key = _build_cache_key(item["name"], "", "blog_potential_v2")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached
@@ -420,6 +436,15 @@ def analyze_blog_potential(
     hook = item.get("hook", "")
     source = item.get("source paper") or item.get("source", "")
     tags = item.get("tags", "")
+    projects = item.get("projects", [])
+
+    # Enrich with paper abstract
+    paper_ctx = fetch_paper_context(source)
+    abstract = paper_ctx.get("abstract", "")
+    abstract_block = (
+        f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+    )
+    projects_line = f"Connected Projects: {', '.join(projects)}" if projects else ""
 
     prompt = f"""\
 <context>
@@ -429,7 +454,9 @@ a research paper or industry article.
 Title: {title}
 Hook: {hook}
 Source: {source}
+{abstract_block}
 Tags: {tags}
+{projects_line}
 </context>
 
 <objective>
@@ -477,7 +504,7 @@ def deep_read_paper(
     Returns:
         Multi-paragraph synthesis string, or empty string on error.
     """
-    cache_key = _build_cache_key(item["name"], "", "paper_deep_read")
+    cache_key = _build_cache_key(item["name"], "", "paper_deep_read_v2")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -486,8 +513,18 @@ def deep_read_paper(
     hook = item.get("hook", "")
     source = item.get("source paper") or item.get("source", "")
     tags = item.get("tags", "")
-    abstract = fetch_paper_abstract(source, status_file)
-    abstract_block = f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+
+    # Fetch full paper context (abstract + full text if available)
+    paper_ctx = fetch_paper_context(source)
+    full_text = paper_ctx.get("full_text", "")
+    abstract = paper_ctx.get("abstract", "")
+
+    if full_text:
+        content_block = f"Paper Content:\n{full_text}"
+    elif abstract:
+        content_block = f"Abstract: {abstract}"
+    else:
+        content_block = "Abstract: (not available)"
 
     prompt = f"""\
 <context>
@@ -498,7 +535,7 @@ breakdown a smart colleague would give over lunch.
 Title: {title}
 Hook: {hook}
 Source: {source}
-{abstract_block}
+{content_block}
 Tags: {tags}
 </context>
 
@@ -554,7 +591,7 @@ def generate_blog_draft(
     Returns:
         Raw MDX body string, or empty string on error.
     """
-    cache_key = _build_cache_key(item["name"], "", "blog_draft")
+    cache_key = _build_cache_key(item["name"], "", "blog_draft_v2")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -563,8 +600,18 @@ def generate_blog_draft(
     hook = item.get("hook", "")
     source = item.get("source paper") or item.get("source", "")
     tags = item.get("tags", "")
-    abstract = fetch_paper_abstract(source, status_file)
-    abstract_block = f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+
+    # Fetch full paper context
+    paper_ctx = fetch_paper_context(source)
+    full_text = paper_ctx.get("full_text", "")
+    abstract = paper_ctx.get("abstract", "")
+
+    if full_text:
+        content_block = f"Paper Content:\n{full_text}"
+    elif abstract:
+        content_block = f"Abstract: {abstract}"
+    else:
+        content_block = "Abstract: (not available)"
 
     prompt = f"""\
 <context>
@@ -575,7 +622,7 @@ adjacent fields, entrepreneurs, or curious generalists who follow AI development
 Title: {title}
 Hook: {hook}
 Source: {source}
-{abstract_block}
+{content_block}
 Tags: {tags}
 </context>
 
@@ -636,7 +683,9 @@ def generate_linkedin_post(
     Returns:
         LinkedIn post string, or empty string on error.
     """
-    cache_key = _build_cache_key(item["name"], draft_excerpt[:50], "linkedin_post")
+    # Hash full draft body for cache key — not truncated excerpt
+    draft_hash = hashlib.sha256(draft_excerpt.encode()).hexdigest()[:16]
+    cache_key = _build_cache_key(item["name"], draft_hash, "linkedin_post_v2")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -650,7 +699,7 @@ A technical blogger just published a new post and wants to announce it on Linked
 
 Post title: {title}
 Post hook: {hook}
-Opening excerpt: {draft_excerpt}
+Draft body: {draft_excerpt}
 </context>
 
 <objective>

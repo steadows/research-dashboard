@@ -76,9 +76,7 @@ def get_project_gsd_plan(project_name: str, vault_path: Path) -> str | None:
     return plan_path.read_text(encoding="utf-8")
 
 
-def get_project_plan_files(
-    project: dict, vault_path: Path
-) -> list[tuple[str, Path]]:
+def get_project_plan_files(project: dict, vault_path: Path) -> list[tuple[str, Path]]:
     """Resolve plan files for a project by following ## Plans wiki-links.
 
     Parses the ``## Plans`` section of the project's content and resolves

@@ -1,9 +1,7 @@
-"""Tests for paper_fetcher — Semantic Scholar abstract fetching."""
+"""Tests for paper_fetcher — Semantic Scholar abstract and full-text fetching."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from utils.paper_fetcher import fetch_paper_abstract, _abstract_cache_key
 
@@ -50,7 +48,8 @@ class TestFetchPaperAbstract:
     def test_calls_api_on_cache_miss(self, tmp_path: Path) -> None:
         sf = tmp_path / "status.json"
         with patch(
-            "utils.paper_fetcher._query_semantic_scholar", return_value="Fresh abstract."
+            "utils.paper_fetcher._query_semantic_scholar",
+            return_value="Fresh abstract.",
         ) as mock_q:
             result = fetch_paper_abstract("New Paper", status_file=sf)
 
@@ -84,9 +83,7 @@ class TestFetchPaperAbstract:
     def test_caches_empty_string_on_no_abstract(self, tmp_path: Path) -> None:
         """An empty-abstract result is cached so we don't hammer the API."""
         sf = tmp_path / "status.json"
-        with patch(
-            "utils.paper_fetcher._query_semantic_scholar", return_value=""
-        ):
+        with patch("utils.paper_fetcher._query_semantic_scholar", return_value=""):
             fetch_paper_abstract("Abstract-less Paper", status_file=sf)
 
         with patch("utils.paper_fetcher._query_semantic_scholar") as mock_q:
@@ -104,7 +101,9 @@ class TestQuerySemanticScholar:
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
-            "data": [{"abstract": "This paper proposes...", "year": 2024, "venue": "NeurIPS"}]
+            "data": [
+                {"abstract": "This paper proposes...", "year": 2024, "venue": "NeurIPS"}
+            ]
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -150,3 +149,294 @@ class TestQuerySemanticScholar:
             result = _query_semantic_scholar("No Abstract Paper")
 
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# New tests for fetch_paper_context (Session 7)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchPaperContext:
+    """fetch_paper_context() — unified paper context with separate file cache."""
+
+    def test_returns_paper_context_dict_with_all_fields(self, tmp_path: Path) -> None:
+        """fetch_paper_context returns PaperContext with all required fields."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "A novel approach to X.",
+                    "openAccessPdf": None,
+                    "externalIds": {},
+                    "year": 2025,
+                    "venue": "NeurIPS",
+                    "authors": [{"name": "Alice"}, {"name": "Bob"}],
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = fetch_paper_context("Novel Paper", cache_dir=tmp_path)
+
+        assert result["abstract"] == "A novel approach to X."
+        assert result["year"] == "2025"
+        assert result["venue"] == "NeurIPS"
+        assert result["authors"] == ["Alice", "Bob"]
+        assert result["fetch_state"] == "abstract_only"
+        assert result["error"] == ""
+        assert "full_text" in result
+        assert "full_text_source" in result
+
+    def test_returns_full_text_from_pdf(self, tmp_path: Path) -> None:
+        """fetch_paper_context extracts full_text from openAccessPdf."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_search_response = MagicMock()
+        mock_search_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "Abstract here.",
+                    "openAccessPdf": {"url": "https://example.com/paper.pdf"},
+                    "externalIds": {},
+                    "year": 2024,
+                    "venue": "ICML",
+                    "authors": [{"name": "Charlie"}],
+                }
+            ]
+        }
+        mock_search_response.raise_for_status = MagicMock()
+
+        mock_pdf_response = MagicMock()
+        mock_pdf_response.content = b"fake pdf bytes"
+        mock_pdf_response.raise_for_status = MagicMock()
+
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch(
+                "utils.paper_fetcher._extract_text_from_pdf",
+                return_value="Extracted PDF text.",
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.side_effect = [mock_search_response, mock_pdf_response]
+
+            result = fetch_paper_context("PDF Paper", cache_dir=tmp_path)
+
+        assert result["full_text"] == "Extracted PDF text."
+        assert result["full_text_source"] == "pdf"
+        assert result["fetch_state"] == "pdf"
+
+    def test_returns_full_text_from_arxiv_html(self, tmp_path: Path) -> None:
+        """fetch_paper_context extracts full_text from arXiv HTML when only ArXiv ID present."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_search_response = MagicMock()
+        mock_search_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "An abstract.",
+                    "openAccessPdf": None,
+                    "externalIds": {"ArXiv": "2401.12345"},
+                    "year": 2024,
+                    "venue": "",
+                    "authors": [],
+                }
+            ]
+        }
+        mock_search_response.raise_for_status = MagicMock()
+
+        mock_html_response = MagicMock()
+        mock_html_response.text = (
+            "<html><body><p>ArXiv paper content here.</p></body></html>"
+        )
+        mock_html_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.side_effect = [mock_search_response, mock_html_response]
+
+            result = fetch_paper_context("ArXiv Paper", cache_dir=tmp_path)
+
+        assert result["full_text_source"] == "arxiv_html"
+        assert result["fetch_state"] == "arxiv_html"
+        assert "ArXiv paper content here." in result["full_text"]
+
+    def test_falls_back_to_abstract_when_no_open_access(self, tmp_path: Path) -> None:
+        """fetch_paper_context sets fetch_state=abstract_only when no open-access source."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "Only this abstract.",
+                    "openAccessPdf": None,
+                    "externalIds": {},
+                    "year": 2023,
+                    "venue": "AAAI",
+                    "authors": [{"name": "Dan"}],
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = fetch_paper_context("Abstract Only Paper", cache_dir=tmp_path)
+
+        assert result["fetch_state"] == "abstract_only"
+        assert result["full_text"] == ""
+        assert result["abstract"] == "Only this abstract."
+
+    def test_sets_failed_on_network_error(self, tmp_path: Path) -> None:
+        """fetch_paper_context sets fetch_state=failed on network error, never raises."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.side_effect = Exception("Connection timeout")
+
+            result = fetch_paper_context("Broken Paper", cache_dir=tmp_path)
+
+        assert result["fetch_state"] == "failed"
+        assert "Connection timeout" in result["error"]
+        assert result["abstract"] == ""
+
+    def test_sets_not_found_when_no_results(self, tmp_path: Path) -> None:
+        """fetch_paper_context sets fetch_state=not_found when Semantic Scholar returns no results."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = fetch_paper_context("Nonexistent Paper", cache_dir=tmp_path)
+
+        assert result["fetch_state"] == "not_found"
+        assert result["abstract"] == ""
+
+    def test_caches_to_paper_cache_directory(self, tmp_path: Path) -> None:
+        """fetch_paper_context caches to the paper-cache directory, not status.json."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        cache_dir = tmp_path / "paper-cache"
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "Cached abstract.",
+                    "openAccessPdf": None,
+                    "externalIds": {},
+                    "year": 2025,
+                    "venue": "CVPR",
+                    "authors": [{"name": "Eve"}],
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            fetch_paper_context("Cacheable Context Paper", cache_dir=cache_dir)
+
+        # Cache directory should exist with at least one .json file
+        assert cache_dir.exists()
+        json_files = list(cache_dir.glob("*.json"))
+        assert len(json_files) >= 1
+
+    def test_get_cached_paper_context_returns_none_on_miss(
+        self, tmp_path: Path
+    ) -> None:
+        """get_cached_paper_context returns None on cache miss without triggering fetch."""
+        from utils.paper_fetcher import get_cached_paper_context
+
+        result = get_cached_paper_context("Never Fetched Paper", cache_dir=tmp_path)
+        assert result is None
+
+    def test_single_semantic_scholar_call(self, tmp_path: Path) -> None:
+        """One Semantic Scholar call satisfies both abstract and full-text needs."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "Abstract.",
+                    "openAccessPdf": None,
+                    "externalIds": {},
+                    "year": 2025,
+                    "venue": "",
+                    "authors": [],
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.Client") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            fetch_paper_context("Single Call Paper", cache_dir=tmp_path)
+
+        # Only one GET request to Semantic Scholar search endpoint
+        assert mock_client.get.call_count == 1
+
+    def test_full_text_capped_at_30k_chars(self, tmp_path: Path) -> None:
+        """Full text is capped at 30K characters."""
+        from utils.paper_fetcher import fetch_paper_context
+
+        long_text = "A" * 50_000  # 50K chars
+
+        mock_search_response = MagicMock()
+        mock_search_response.json.return_value = {
+            "data": [
+                {
+                    "abstract": "Abstract.",
+                    "openAccessPdf": {"url": "https://example.com/paper.pdf"},
+                    "externalIds": {},
+                    "year": 2025,
+                    "venue": "",
+                    "authors": [],
+                }
+            ]
+        }
+        mock_search_response.raise_for_status = MagicMock()
+
+        mock_pdf_response = MagicMock()
+        mock_pdf_response.content = b"fake pdf"
+        mock_pdf_response.raise_for_status = MagicMock()
+
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch("utils.paper_fetcher._extract_text_from_pdf", return_value=long_text),
+        ):
+            mock_client = MagicMock()
+            mock_client_cls.return_value.__enter__.return_value = mock_client
+            mock_client.get.side_effect = [mock_search_response, mock_pdf_response]
+
+            result = fetch_paper_context("Long Paper", cache_dir=tmp_path)
+
+        assert len(result["full_text"]) <= 30_000

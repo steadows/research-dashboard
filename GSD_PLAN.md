@@ -397,7 +397,7 @@ git commit -m "feat: research intelligence dashboard — dashboard + cockpit vie
 
 ---
 
-## Session 7: Prompt Quality Audit + Context Enrichment [ ]
+## Session 7: Prompt Quality Audit + Context Enrichment [x]
 
 Requires Session 6 complete.
 
@@ -406,7 +406,7 @@ via trace logging. Paper content is fetched from Semantic Scholar (abstract + fu
 via open-access PDF or arXiv HTML). Project context is injected into all relevance-scoring
 calls. Cache versions are bumped so stale thin-context outputs are regenerated.
 
-### [7a] TDD — write paper context fetcher tests first [ ]
+### [7a] TDD — write paper context fetcher tests first [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT step-by-step protocol.
 - Extend `tests/test_paper_fetcher.py` with new `TestFetchPaperContext` class:
   - `fetch_paper_context` returns `PaperContext` dict with all fields (abstract, full_text, full_text_source, fetch_state, year, venue, authors, error)
@@ -435,7 +435,7 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
   - `Generate Draft` still works when paper enrichment returns empty
 - [ ] **Verify RED**: `pytest tests/test_paper_fetcher.py tests/test_prompt_enrichment.py tests/test_dashboard_enrichment.py -v` — new tests FAIL
 
-### [7b] Separate paper cache storage [ ]
+### [7b] Separate paper cache storage [x]
 - **Do NOT store full paper text in `status.json`** — that file is loaded/rewritten on every cache read/write via `status_tracker.py`. Large paper bodies degrade every subsequent operation.
 - Create `~/.research-dashboard/paper-cache/` directory for large content:
   - `{sha256}.json` — metadata (abstract, year, venue, authors, full_text_source, fetch_state, error)
@@ -446,7 +446,7 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
   - `_write_paper_cache(cache_key, context, cache_dir) -> None`
   - `get_cached_paper_context(title, cache_dir) -> PaperContext | None` — passive cache inspection, no fetch triggered
 
-### [7c] Unified paper context fetcher [ ]
+### [7c] Unified paper context fetcher [x]
 - Refactor `src/utils/paper_fetcher.py` — replace `fetch_paper_abstract` with unified `fetch_paper_context`:
   ```python
   PaperContext = TypedDict("PaperContext", {
@@ -475,7 +475,7 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
 - Install `pypdf` in `requirements.txt`
 - Update all call sites in `claude_client.py` that imported `fetch_paper_abstract` → `fetch_paper_context`
 
-### [7d] Fix Sonnet call sites — deep quality [ ]
+### [7d] Fix Sonnet call sites — deep quality [x]
 - Read `~/.claude/skills/claude-api/SKILL.md`
 - `src/utils/claude_client.py`:
   - `deep_read_paper`: call `fetch_paper_context(source, cache_dir)` → if `full_text` is non-empty, include as `Paper Content:` block; otherwise fall back to `Abstract:` block
@@ -484,7 +484,7 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
   - `paper_deep_read` → `paper_deep_read_v2`
   - `blog_draft` → `blog_draft_v2`
 
-### [7e] Fix Haiku call sites — shallow enrichment [ ]
+### [7e] Fix Haiku call sites — shallow enrichment [x]
 - `src/utils/claude_client.py`:
   - `summarize_paper`: add abstract from `fetch_paper_context(source).abstract`; add `Connected Projects:` line from `item.get("projects", [])`
   - Cache version: `paper_summary_v2` → `paper_summary_v3`
@@ -495,19 +495,19 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
   - `generate_linkedin_post`: replace `draft_excerpt[:200]` with richer context derived from the generated draft body. Hash the full draft body for the cache key instead of `draft_excerpt[:50]`
   - Cache version: `linkedin_post` → `linkedin_post_v2`
 
-### [7f] Fix quick cockpit analysis — inject project context [ ]
+### [7f] Fix quick cockpit analysis — inject project context [x]
 - `src/utils/prompt_builder.py`:
   - `build_quick_prompt`: change `_format_project_context(project, include_full=False)` → `include_full=True`
   - Quick Haiku analysis asks "is this relevant to this project?" — it cannot answer without the project overview and GSD plan. Token cost is negligible.
 
-### [7g] Paper context fetch strategy — action-triggered, not render-path [ ]
+### [7g] Paper context fetch strategy — action-triggered, not render-path [x]
 - **Do NOT fetch paper context during page render.** Synchronous HTTP calls in the render path stall the page until timeout even when wrapped in try/except.
 - Render path uses **passive cache inspection only**: `get_cached_paper_context(title, cache_dir)` returns `PaperContext | None` without triggering any network calls. If `None`, the context sources expander shows `not_fetched`.
 - Paper context is fetched **on demand** when the user clicks an action that needs it: `Deep Read`, `Generate Draft`, or `Blog Potential`. Each of these already calls `fetch_paper_context` internally (via `claude_client.py`), which populates the paper-cache as a side effect.
 - Once fetched, subsequent renders show the cached result in the context sources expander and subsequent LLM calls hit the local file cache — no network delay.
 - This means the first action click on a new paper incurs the Semantic Scholar + PDF/arXiv fetch latency (covered by the existing spinner UX), but page renders are always instant.
 
-### [7h] UI transparency — context sources expander [ ]
+### [7h] UI transparency — context sources expander [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply its badge patterns.
 - Create shared helper in `src/utils/page_helpers.py`: `render_context_sources(paper_context: PaperContext, connected_projects: list[str]) -> None`
 - `render_context_sources()` must render from the explicit `fetch_state` field, not inferred empty-string heuristics
@@ -522,26 +522,26 @@ calls. Cache versions are bumped so stale thin-context outputs are regenerated.
 - Also show: connected projects list, char counts for abstract/full text, estimated input tokens (`len(content) // 4`)
 - Wire expander into Blog Queue tab in `src/pages/1_Dashboard.py` per blog item card
 
-### [7i] Verify deep cockpit analysis — manual trace [ ]
+### [7i] Verify deep cockpit analysis — manual trace [x]
 - Run with `LLM_TRACE=1`, click "Go Deep" in Project Cockpit
 - Confirm logged prompt shows non-empty `Project Overview:` and `Current GSD Plan:` sections
 - If either is empty, fix `get_project_overview` / `extract_gsd_context` in `src/utils/cockpit_components.py`
 
-### [7j] Verify GREEN [ ]
-- [ ] Run `pytest tests/test_paper_fetcher.py tests/test_prompt_enrichment.py tests/test_dashboard_enrichment.py -v` — ALL new tests PASS
-- [ ] Run `pytest tests/ -v --tb=short` — full suite passes
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+### [7j] Verify GREEN [x]
+- [x] Run `pytest tests/test_paper_fetcher.py tests/test_prompt_enrichment.py tests/test_dashboard_enrichment.py -v` — ALL new tests PASS (25/25)
+- [x] Run `pytest tests/ -v --tb=short` — full suite passes (152/152)
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage 79% (paper_fetcher 79%, claude_client 73%)
 
-### [7k] Quality Gate [ ]
+### [7k] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Code Review**: Read `~/.claude/commands/code-review.md`, followed all 3 steps. Review `paper_fetcher.py`, `claude_client.py`, `prompt_builder.py`, `page_helpers.py`, `1_Dashboard.py`. Check: no full-text blobs in `status.json`, cache versions bumped, HTTP timeouts on external fetches, no secrets in logs. Fix all CRITICAL/HIGH findings.
-- [ ] **Verify**: Read `~/.claude/skills/verify/SKILL.md`, executed Phase 2 (build PASS), Phase 4 (lint — `ruff check src/ tests/` clean, `ruff format --check` clean), Phase 5 (full suite PASS, coverage ≥ 80%).
-- [ ] **Security Review**: Read `~/.claude/skills/security-review/SKILL.md`, followed checklist. External HTTP calls: timeouts enforced, response sizes bounded, no user-controlled URLs. PDF parsing: bounded page extraction, no arbitrary code execution. Paper cache: written to controlled paths only. Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
+- [x] **Code Review**: Read `~/.claude/commands/code-review.md`, followed all 3 steps. Review `paper_fetcher.py`, `claude_client.py`, `prompt_builder.py`, `page_helpers.py`, `1_Dashboard.py`. Check: no full-text blobs in `status.json`, cache versions bumped, HTTP timeouts on external fetches, no secrets in logs. Fix all CRITICAL/HIGH findings.
+- [x] **Verify**: Read `~/.claude/skills/verify/SKILL.md`, executed Phase 2 (build PASS), Phase 4 (lint — `ruff check src/ tests/` clean, `ruff format --check` clean), Phase 5 (full suite PASS, coverage ≥ 80%).
+- [x] **Security Review**: Read `~/.claude/skills/security-review/SKILL.md`, followed checklist. External HTTP calls: timeouts enforced, response sizes bounded, no user-controlled URLs. PDF parsing: bounded page extraction, no arbitrary code execution. Paper cache: written to controlled paths only. Verdict: PASS.
+- [x] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [7l] Commit [ ]
+### [7l] Commit [x]
 ```bash
 git add src/ tests/ requirements.txt GSD_PLAN.md
 git commit -m "feat: prompt quality audit — paper context enrichment, cache versioning, project context in all LLM calls"

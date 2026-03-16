@@ -31,9 +31,11 @@ from utils.page_helpers import (
     EMPTY_NO_REPORTS,
     EMPTY_NO_TOOLS,
     get_vault_path,
+    render_context_sources,
     safe_html,
     safe_parse,
 )
+from utils.paper_fetcher import get_cached_paper_context
 from utils.reports_parser import parse_journalclub_reports, parse_tldr_reports
 from utils.status_tracker import get_item_status, set_item_status
 from utils.tools_parser import parse_tools
@@ -482,6 +484,12 @@ def _handle_dismiss_button(
 def _render_analysis_panel(item: dict[str, Any], current_status: str) -> None:
     """Render deep read, analysis results, and draft expanders below the card."""
     item_name = item["name"]
+
+    # Context sources expander — passive cache inspection only (no network calls)
+    source = item.get("source paper") or item.get("source", "")
+    paper_ctx = get_cached_paper_context(source) if source else None
+    connected_projects = item.get("projects", [])
+    render_context_sources(paper_ctx, connected_projects)
 
     # Deep Read result
     deep_key = f"dashboard__blog_deep_read_{item_name}"

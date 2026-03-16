@@ -77,7 +77,7 @@ def build_quick_prompt(item: dict, project: dict) -> str:
         Prompt string for quick analysis.
     """
     item_context = _format_item_context(item)
-    project_context = _format_project_context(project, include_full=False)
+    project_context = _format_project_context(project, include_full=True)
 
     return f"""\
 <context>
