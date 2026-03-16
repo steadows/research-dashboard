@@ -28,8 +28,9 @@ from utils.page_helpers import (
     safe_html,
     safe_parse,
 )
+from utils.smart_matcher import build_smart_project_index
 from utils.status_tracker import get_item_status, load_status, set_item_status
-from utils.vault_parser import build_project_index, parse_projects
+from utils.vault_parser import parse_projects
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,8 @@ def _load_projects(vault_path_str: str) -> list[dict[str, Any]]:
 
 @st.cache_data(ttl=3600)
 def _load_project_index(vault_path_str: str) -> dict[str, list[dict[str, Any]]]:
-    """Load project index with caching."""
-    return build_project_index(Path(vault_path_str))
+    """Load smart project index with explicit + inferred matches."""
+    return build_smart_project_index(vault_path_str)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +229,17 @@ def _render_item_card_header(item: dict[str, Any]) -> str:
         f'border-radius:4px;font-size:0.7rem">{source_label}</span> '
         f"<strong>{name}</strong>"
     )
+
+    # Inferred match indicator
+    match_type = item.get("match_type", "explicit")
+    confidence = item.get("confidence", 1.0)
+    if match_type == "inferred":
+        header += (
+            f' <span style="background:#374151;color:#9CA3AF;padding:1px 6px;'
+            f'border-radius:3px;font-size:0.65rem;margin-left:4px">'
+            f"suggested ({confidence:.0%})</span>"
+        )
+
     if source:
         header += f'<br><span style="color:#9CA3AF;font-size:0.8em">{source}</span>'
     if status:

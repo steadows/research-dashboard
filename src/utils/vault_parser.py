@@ -17,6 +17,15 @@ logger = logging.getLogger(__name__)
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _INLINE_FIELD_RE = re.compile(r"^\*\*([^*]+)\*\*:\s*(.+)$", re.MULTILINE)
 
+# Projects excluded from the dashboard — not relevant to active research
+_EXCLUDED_PROJECTS = frozenset({
+    "Data Science Portfolio",
+    "High Tech Pomodoro",
+    "Intent Agent Starter Kit",
+    "Mileneous Years",
+    "Rental Product Recommender",
+})
+
 
 def parse_projects(vault_path: Path) -> list[dict[str, Any]]:
     """Parse all project markdown files from the vault.
@@ -35,6 +44,9 @@ def parse_projects(vault_path: Path) -> list[dict[str, Any]]:
 
     projects: list[dict[str, Any]] = []
     for md_file in sorted(projects_dir.glob("*.md")):
+        if md_file.stem in _EXCLUDED_PROJECTS:
+            logger.debug("Skipping excluded project: %s", md_file.stem)
+            continue
         project = _parse_single_project(md_file)
         if project:
             projects.append(project)

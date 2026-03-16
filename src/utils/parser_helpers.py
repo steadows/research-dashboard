@@ -68,7 +68,7 @@ def parse_fields(body: str) -> dict[str, str]:
     return fields
 
 
-_PROJECT_FIELD_ALIASES = ("projects", "apply to", "try on")
+_PROJECT_FIELD_ALIASES = ("projects", "apply to", "try on", "connect to")
 
 
 def parse_project_links(body: str) -> list[str]:

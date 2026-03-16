@@ -80,10 +80,11 @@ def get_project_plan_files(project: dict, vault_path: Path) -> list[tuple[str, P
     """Resolve plan files for a project by following ## Plans wiki-links.
 
     Parses the ``## Plans`` section of the project's content and resolves
-    each ``[[Wiki Link]]`` to ``Plans/{name}.md`` in the vault. Handles
-    projects with zero, one, or multiple plan files.
+    each ``[[Wiki Link]]`` to files in ``Plans/`` or ``Blueprints/`` in the
+    vault. Handles projects with zero, one, or multiple plan files.
 
-    Includes a path traversal guard: resolved paths must stay inside Plans/.
+    Includes a path traversal guard: resolved paths must stay inside their
+    respective directory.
 
     Args:
         project: Project dict with 'content' key from vault_parser.
@@ -93,9 +94,10 @@ def get_project_plan_files(project: dict, vault_path: Path) -> list[tuple[str, P
         List of (plan_name, resolved_path) tuples for files that exist.
     """
     content = project.get("content", "")
-    plans_dir = vault_path / "Plans"
+    search_dirs = [vault_path / "Plans", vault_path / "Blueprints"]
+    search_dirs = [d for d in search_dirs if d.is_dir()]
 
-    if not plans_dir.is_dir():
+    if not search_dirs:
         return []
 
     # Extract the ## Plans section body
@@ -109,21 +111,28 @@ def get_project_plan_files(project: dict, vault_path: Path) -> list[tuple[str, P
     wiki_links = re.findall(r"\[\[([^\]]+)\]\]", plans_body)
 
     results: list[tuple[str, Path]] = []
-    plans_dir_resolved = plans_dir.resolve()
+    seen: set[str] = set()
 
     for link_name in wiki_links:
-        candidate = plans_dir / f"{link_name}.md"
-        try:
-            resolved = candidate.resolve()
-            if not str(resolved).startswith(str(plans_dir_resolved)):
-                logger.warning("Path traversal blocked for plan link: %s", link_name)
-                continue
-        except (OSError, ValueError):
+        if link_name in seen:
             continue
-        if resolved.is_file():
-            results.append((link_name, resolved))
+        for search_dir in search_dirs:
+            candidate = search_dir / f"{link_name}.md"
+            try:
+                resolved = candidate.resolve()
+                if not str(resolved).startswith(str(search_dir.resolve())):
+                    logger.warning(
+                        "Path traversal blocked for plan link: %s", link_name
+                    )
+                    continue
+            except (OSError, ValueError):
+                continue
+            if resolved.is_file():
+                results.append((link_name, resolved))
+                seen.add(link_name)
+                break
         else:
-            logger.debug("Plan file not found: %s", candidate)
+            logger.debug("Plan/blueprint file not found: %s", link_name)
 
     return results
 
