@@ -705,14 +705,14 @@ Full design: `~/.claude/plans/noble-roaming-squirrel.md`
 - [x] Run `pytest tests/ -v --tb=short` — 212/212 full suite passes
 - [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — workbench_tracker 97%, utils total 77%
 
-### [9g] Quality Gate [~]
+### [9g] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `workbench_tracker.py` schema changes, `3_Workbench.py` wb_key keying, `2_Project_Cockpit.py` new button) and security review (focus: no bare-name ambiguity exploits, status restore uses allowlisted fields only). All CRITICAL/HIGH findings fixed. Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
+- [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `workbench_tracker.py` schema changes, `3_Workbench.py` wb_key keying, `2_Project_Cockpit.py` new button) and security review (focus: no bare-name ambiguity exploits, status restore uses allowlisted fields only). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [9h] Commit [ ]
+### [9h] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: methods workbench — namespaced keys, generalized schema, provenance restore, cockpit workbench button"
@@ -720,7 +720,7 @@ git commit -m "feat: methods workbench — namespaced keys, generalized schema, 
 
 ---
 
-## Session 10: Research Agent [ ]
+## Session 10: Research Agent [~]
 
 Requires Session 9 complete.
 
@@ -729,7 +729,7 @@ Requires Session 9 complete.
 > add source-type-specific prompts (methods don't have `## How to Install`) and
 > source-type-aware output directory naming (use `get_slug(name, source_type)`).
 
-### [10a] TDD — write research agent tests first [ ]
+### [10a] TDD — write research agent tests first [x]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_research_agent.py`:
   - `launch_research_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
@@ -744,7 +744,7 @@ Requires Session 9 complete.
   - `render_research_html` returns Path to generated file
 - [ ] **Verify RED**: `pytest tests/test_research_agent.py -v` — ALL tests FAIL (module not yet created)
 
-### [10b] src/utils/research_agent.py [ ]
+### [10b] src/utils/research_agent.py [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/streamlit-llm-trace/SKILL.md`. Apply logging conventions for subprocess-based LLM calls.
 - **Subprocess rules** (inline — no external skill dependency):
   - Invoke `claude -p` as a list arg via `subprocess.Popen` — never use `shell=True` with interpolated strings
@@ -781,7 +781,7 @@ Requires Session 9 complete.
 - **`parse_research_output()`**: read `research.md`, find `## Programmatic Assessment` section, check first word of body for YES/NO. Return `{"experiment_type": "programmatic"|"manual"|None, "summary": str}` where summary is the `## Overview` section text.
 - Module-level logger: `logger = logging.getLogger(__name__)`
 
-### [10c] Workbench page — Research button + log tail + review gate [ ]
+### [10c] Workbench page — Research button + log tail + review gate [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/building-streamlit-llm-apps/SKILL.md`. Apply streaming/polling UI patterns.
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply key-only widget patterns.
 - Wire `🔍 Research` button in `3_Workbench.py`:
@@ -799,18 +799,18 @@ Requires Session 9 complete.
   - `experiment_type == "manual"`: show orange `Manual Evaluation` badge + setup steps from `## Experiment Design` section. No sandbox button — ever.
 - Status `"failed"`: show red error banner + last 10 lines of `agent.log`
 
-### [10d] Verify GREEN [ ]
+### [10d] Verify GREEN [x]
 - [ ] Run `pytest tests/test_research_agent.py -v` — ALL tests PASS
 - [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — full suite passes, coverage ≥ 80%
 
-### [10e] Quality Gate [ ]
+### [10e] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
 - [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `research_agent.py`, `3_Workbench.py`) and security review (focus: subprocess injection — prompt as list arg, no shell=True with f-string, no user-controlled subprocess args, log files in controlled paths). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [10f] Commit [ ]
+### [10f] Commit [~]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/manual assessment, review gate"
