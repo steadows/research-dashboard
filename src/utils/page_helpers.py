@@ -86,6 +86,33 @@ def safe_parse(
 
 
 # ---------------------------------------------------------------------------
+# Shared color constants
+# ---------------------------------------------------------------------------
+
+CATEGORY_COLORS: dict[str, str] = {
+    "IDE": "#8B5CF6",
+    "Database": "#10B981",
+    "Framework": "#3B82F6",
+    "DevOps": "#F59E0B",
+    "AI/ML": "#EC4899",
+    "Security": "#EF4444",
+    "Uncategorized": "#6B7280",
+}
+
+
+def get_category_color(category: str) -> str:
+    """Return hex color for a tool category.
+
+    Args:
+        category: Tool category string.
+
+    Returns:
+        Hex color string.
+    """
+    return CATEGORY_COLORS.get(category, "#6B7280")
+
+
+# ---------------------------------------------------------------------------
 # Context sources expander — UI transparency for LLM enrichment
 # ---------------------------------------------------------------------------
 

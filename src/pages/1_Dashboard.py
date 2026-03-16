@@ -30,6 +30,7 @@ from utils.page_helpers import (
     EMPTY_NO_BLOG,
     EMPTY_NO_REPORTS,
     EMPTY_NO_TOOLS,
+    get_category_color,
     get_vault_path,
     render_context_sources,
     safe_html,
@@ -39,28 +40,9 @@ from utils.paper_fetcher import get_cached_paper_context
 from utils.reports_parser import parse_journalclub_reports, parse_tldr_reports
 from utils.status_tracker import get_item_status, set_item_status
 from utils.tools_parser import parse_tools
+from utils.workbench_tracker import add_to_workbench
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Category color mapping for Tools Radar
-# ---------------------------------------------------------------------------
-
-_CATEGORY_COLORS: dict[str, str] = {
-    "IDE": "#8B5CF6",
-    "Database": "#10B981",
-    "Framework": "#3B82F6",
-    "DevOps": "#F59E0B",
-    "AI/ML": "#EC4899",
-    "Security": "#EF4444",
-    "Uncategorized": "#6B7280",
-}
-
-
-def _get_category_color(category: str) -> str:
-    """Return hex color for a tool category."""
-    return _CATEGORY_COLORS.get(category, "#6B7280")
-
 
 # ---------------------------------------------------------------------------
 # Cached parser wrappers — @st.cache_data(ttl=3600)
@@ -157,7 +139,7 @@ def _render_top_tools(tools: list[dict[str, Any]]) -> None:
     for tool in tools[:3]:
         name = safe_html(tool["name"])
         category = safe_html(tool.get("category", ""))
-        color = _get_category_color(tool.get("category", ""))
+        color = get_category_color(tool.get("category", ""))
         st.markdown(
             f'<span style="color:{color};font-weight:600">{name}</span>'
             f' <span style="color:#9CA3AF;font-size:0.8em">({category})</span>',
@@ -246,7 +228,7 @@ def _render_blog_queue_tab(blog_items: list[dict[str, Any]]) -> None:
         st.markdown(
             f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
             f"{idx + 1} of {len(filtered)}"
-            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            f' · <span style="color:#9CA3AF">{safe_html(current_status)}</span></div>',
             unsafe_allow_html=True,
         )
     with nav_right:
@@ -577,7 +559,14 @@ def _filter_by_status(items: list[dict[str, Any]], status: str) -> list[dict[str
 # Tools Radar tab
 # ---------------------------------------------------------------------------
 
-_TOOL_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped"]
+_TOOL_STATUS_OPTIONS = [
+    "new",
+    "reviewed",
+    "queued",
+    "skipped",
+    "dismissed",
+    "workbench",
+]
 
 
 def _render_tools_radar_tab(tools: list[dict[str, Any]]) -> None:
@@ -621,7 +610,7 @@ def _render_tools_radar_tab(tools: list[dict[str, Any]]) -> None:
         st.markdown(
             f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
             f"{idx + 1} of {len(filtered)}"
-            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            f' · <span style="color:#9CA3AF">{safe_html(current_status)}</span></div>',
             unsafe_allow_html=True,
         )
     with nav_right:
@@ -651,7 +640,7 @@ def _render_tool_review_card(
     """Render a single full-width tool review card with synthesis."""
     name = safe_html(tool["name"])
     category = safe_html(tool.get("category", "Uncategorized"))
-    color = _get_category_color(tool.get("category", ""))
+    color = get_category_color(tool.get("category", ""))
     source = safe_html(tool.get("source", ""))
     projects = tool.get("projects", [])
 
@@ -690,23 +679,68 @@ def _render_tool_review_card(
 
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # Status selector
-    col_status, _ = st.columns([1, 3])
+    # Action row: status, workbench, dismiss
+    col_status, col_workbench, col_dismiss = st.columns([1, 1, 1])
+
     with col_status:
-        current_idx = (
-            _TOOL_STATUS_OPTIONS.index(current_status)
-            if current_status in _TOOL_STATUS_OPTIONS
-            else 0
+        _handle_tool_status_selector(item_id, tool["name"], current_status)
+
+    with col_workbench:
+        _handle_workbench_button(tool, item_id, current_status)
+
+    with col_dismiss:
+        _handle_tool_dismiss_button(item_id, tool["name"], current_status)
+
+
+def _handle_tool_status_selector(
+    item_id: str, tool_name: str, current_status: str
+) -> None:
+    """Render the tool status dropdown."""
+    current_idx = (
+        _TOOL_STATUS_OPTIONS.index(current_status)
+        if current_status in _TOOL_STATUS_OPTIONS
+        else 0
+    )
+    new_status = st.selectbox(
+        "Status",
+        _TOOL_STATUS_OPTIONS,
+        index=current_idx,
+        key=f"dashboard__tool_status_{tool_name}",
+        label_visibility="collapsed",
+    )
+    if new_status != current_status:
+        set_item_status(item_id, new_status)
+
+
+def _handle_workbench_button(
+    tool: dict[str, Any], item_id: str, current_status: str
+) -> None:
+    """Render the Workbench button for sending a tool to the workbench."""
+    disabled = current_status == "workbench"
+    if st.button(
+        "🔬 Workbench",
+        key=f"dashboard__tool_workbench_{tool['name']}",
+        disabled=disabled,
+    ):
+        add_to_workbench(tool)
+        set_item_status(item_id, "workbench")
+        st.rerun()
+
+
+def _handle_tool_dismiss_button(
+    item_id: str, tool_name: str, current_status: str
+) -> None:
+    """Render the Dismiss button for archiving a tool."""
+    if current_status == "dismissed":
+        st.markdown(
+            '<span style="color:#6B7280;font-size:0.75rem">archived</span>',
+            unsafe_allow_html=True,
         )
-        new_status = st.selectbox(
-            "Status",
-            _TOOL_STATUS_OPTIONS,
-            index=current_idx,
-            key=f"dashboard__tool_status_{tool['name']}",
-            label_visibility="collapsed",
-        )
-        if new_status != current_status:
-            set_item_status(item_id, new_status)
+        return
+
+    if st.button("🗃️ Dismiss", key=f"dashboard__tool_dismiss_{tool_name}"):
+        set_item_status(item_id, "dismissed")
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------

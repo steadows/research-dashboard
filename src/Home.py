@@ -138,6 +138,7 @@ def _init_session_state() -> None:
     """Initialize namespaced session state keys."""
     st.session_state.setdefault("dashboard__active_tab", 0)
     st.session_state.setdefault("cockpit__selected_project", None)
+    st.session_state.setdefault("workbench__selected_item", None)
 
 
 # ---------------------------------------------------------------------------
@@ -157,8 +158,13 @@ def _build_navigation() -> st.Page:
         title="Project Cockpit",
         icon=":material/rocket_launch:",
     )
+    workbench_page = st.Page(
+        "pages/3_Workbench.py",
+        title="Workbench",
+        icon="🔬",
+    )
 
-    page = st.navigation([dashboard_page, cockpit_page])
+    page = st.navigation([dashboard_page, cockpit_page, workbench_page])
     return page
 
 

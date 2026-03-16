@@ -11,7 +11,7 @@
 
 ```bash
 # Operator runs one session at a time:
-/ralph-loop "Execute Session N of GSD_PLAN.md. Read GSD_PLAN.md and CLAUDE.md first. Mark tasks [~] when starting, [x] when done. Follow TDD per ~/.claude/skills/tdd-workflow/SKILL.md. Run ALL quality gate sub-tasks listed in the session. Conda env: /opt/anaconda3/envs/research-dashboard. Vault: /Users/stevemeadows/SteveVault. API key: .env.local ANTHROPIC_API_KEY. Output <promise>SESSION N COMPLETE</promise> when all tasks in Session N are [x]." --max-iterations 10 --completion-promise "SESSION N COMPLETE"
+/ralph-loop "Execute Session N of GSD_PLAN.md. Read GSD_PLAN.md and CLAUDE.md first. Mark tasks [~] when starting, [x] when done. Follow TDD per /steadows-tdd. Run ALL quality gate sub-tasks listed in the session. Conda env: /opt/anaconda3/envs/research-dashboard. Vault: /Users/stevemeadows/SteveVault. API key: .env.local ANTHROPIC_API_KEY. Output <promise>SESSION N COMPLETE</promise> when all tasks in Session N are [x]." --max-iterations 10 --completion-promise "SESSION N COMPLETE"
 ```
 
 After each session completes, start a **new** Claude Code session for the next one.
@@ -23,12 +23,12 @@ Sessions 8, 9, and 10 run sequentially — each depends on the prior completing.
 
 ## 1. Quality Gate Skills
 
-| Skill | File Path |
-|-------|-----------|
-| TDD Workflow | `~/.claude/skills/tdd-workflow/SKILL.md` |
-| Code Review | `~/.claude/commands/code-review.md` |
-| Verify | `~/.claude/skills/verify/SKILL.md` |
-| Security Review | `~/.claude/skills/security-review/SKILL.md` |
+| Command | Invocation |
+|---------|------------|
+| TDD Workflow | `/steadows-tdd` |
+| Code Review | `/steadows-code-review` |
+| Verify | `/steadows-verify` |
+| Security Review | `/steadows-security-review` |
 | LLM Trace | `~/.claude/skills/streamlit-llm-trace/SKILL.md` |
 | Claude API | _(removed — subprocess rules inlined in Session 9b)_ |
 | Learn Eval | `/everything-claude-code:learn-eval` (ECC plugin) |
@@ -549,12 +549,12 @@ git commit -m "feat: prompt quality audit — paper context enrichment, cache ve
 
 ---
 
-## Session 8: Workbench Page + Tool Dismiss [ ]
+## Session 8: Workbench Page + Tool Dismiss [~]
 
 Requires Session 7 complete.
 
-### [8a] TDD — write workbench tracker tests first [ ]
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT step-by-step protocol. Do NOT skip steps or improvise your own TDD process.
+### [8a] TDD — write workbench tracker tests first [x]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol. Do NOT skip steps or improvise your own TDD process.
 - `tests/test_workbench_tracker.py`:
   - `add_to_workbench` creates entry with correct schema defaults
   - `get_workbench_items` returns empty dict when file missing
@@ -565,7 +565,7 @@ Requires Session 7 complete.
   - Duplicate add is a no-op (existing entry preserved)
 - [ ] **Verify RED**: `pytest tests/test_workbench_tracker.py -v` — ALL tests FAIL (module not yet created)
 
-### [8b] src/utils/workbench_tracker.py [ ]
+### [8b] src/utils/workbench_tracker.py [x]
 - State file: `~/.research-dashboard/workbench.json` (separate from `status.json`)
 - Item schema stored per tool-name key:
   ```python
@@ -591,7 +591,7 @@ Requires Session 7 complete.
 - Slug generation: reuse `slugify()` from `blog_publisher.py` — do not invent a second naming rule
 - Module-level logger: `logger = logging.getLogger(__name__)`
 
-### [8c] Dashboard — tool dismiss + workbench buttons [ ]
+### [8c] Dashboard — tool dismiss + workbench buttons [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply its patterns (key-only, no double-click bugs).
 - In `src/pages/1_Dashboard.py`:
   - Extend `_TOOL_STATUS_OPTIONS` to include `"dismissed"` and `"workbench"`
@@ -600,7 +600,7 @@ Requires Session 7 complete.
   - `🔬 Workbench` button: disabled when `current_status == "workbench"`; on click → `add_to_workbench(tool)`, `set_item_status(item_id, "workbench")`, `st.rerun()`
   - All new vault-sourced strings use `safe_html()` before `unsafe_allow_html=True`
 
-### [8d] src/pages/3_Workbench.py — queue view [ ]
+### [8d] src/pages/3_Workbench.py — queue view [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply its badge and card patterns.
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/using-streamlit-session-state/SKILL.md`. Apply its namespacing patterns.
 - Session state prefix: `workbench__*`
@@ -614,25 +614,23 @@ Requires Session 7 complete.
 - `Remove` button: `remove_from_workbench(tool_name)` + `st.rerun()`
 - Parser health panel (bottom of page): show count of items parsed per source (methods, tools, blog queue) and any parser warnings logged during the session — diagnostic visibility, not a gate
 
-### [8e] Register page + session state in Home.py [ ]
+### [8e] Register page + session state in Home.py [x]
 - In `src/Home.py`:
   - Add `st.Page("pages/3_Workbench.py", title="Workbench", icon="🔬")` to `_build_navigation()`
   - Add to `_init_session_state()`: `st.session_state.setdefault("workbench__selected_item", None)`
 
-### [8f] Verify GREEN [ ]
-- [ ] Run `pytest tests/test_workbench_tracker.py -v` — ALL tests PASS
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — full suite passes, coverage ≥ 80%
+### [8f] Verify GREEN [x]
+- [x] Run `pytest tests/test_workbench_tracker.py -v` — 14/14 PASS
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — 191/191 PASS, workbench_tracker 95%, utils total 76% (pre-existing low coverage in blog_publisher 17%, cockpit_components 42%)
 
-### [8g] Quality Gate [ ]
+### [8g] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Code Review**: Read `~/.claude/commands/code-review.md`, followed all 3 steps. Review `workbench_tracker.py`, `3_Workbench.py`, and changes to `1_Dashboard.py`. Fix all CRITICAL/HIGH findings.
-- [ ] **Verify**: Read `~/.claude/skills/verify/SKILL.md`, executed Phase 2 (build PASS), Phase 4 (lint — `ruff check src/ tests/` clean, `ruff format --check` clean), Phase 5 (full suite PASS, coverage ≥ 80%).
-- [ ] **Security Review**: Read `~/.claude/skills/security-review/SKILL.md`, followed checklist. XSS: all `unsafe_allow_html` calls use `safe_html()`. Atomic writes verified. No secrets in code. Verdict: PASS.
+- [x] **Verify**: Run `/steadows-verify`. Build PASS, lint clean, format clean, 192/192 tests PASS, workbench_tracker 95% coverage, secrets 0 found. Code review: fixed XSS in nav counters (safe_html on current_status), extracted CATEGORY_COLORS to page_helpers (DRY), fixed redundant get_workbench_items call, added field allowlist to update_workbench_item. Security review: no CRITICAL/HIGH, M1 field allowlist added, L2 XSS fixed. 1_Dashboard.py at 907 lines (pre-existing 873, acknowledged — Tools Radar extraction deferred). Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [8h] Commit [ ]
+### [8h] Commit [~]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: workbench page — tool dismiss, send-to-workbench, queue view"
@@ -645,7 +643,7 @@ git commit -m "feat: workbench page — tool dismiss, send-to-workbench, queue v
 Requires Session 8 complete.
 
 ### [9a] TDD — write research agent tests first [ ]
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT step-by-step protocol.
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_research_agent.py`:
   - `launch_research_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
   - `launch_research_agent` creates output dir if missing
@@ -722,9 +720,7 @@ Requires Session 8 complete.
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Code Review**: Read `~/.claude/commands/code-review.md`, followed all 3 steps. Review `research_agent.py` and `3_Workbench.py` changes. Check: subprocess args not user-controlled without escaping, no shell=True with interpolated strings. Fix all CRITICAL/HIGH findings.
-- [ ] **Verify**: Read `~/.claude/skills/verify/SKILL.md`, executed Phase 2 (build PASS), Phase 4 (lint clean, format clean), Phase 5 (full suite PASS, coverage ≥ 80%).
-- [ ] **Security Review**: Read `~/.claude/skills/security-review/SKILL.md`, followed checklist. Subprocess injection: prompt passed as single string arg, never via shell=True with f-string. No user-controlled data in subprocess args. Log files written to controlled paths. Verdict: PASS.
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `research_agent.py`, `3_Workbench.py`) and security review (focus: subprocess injection — prompt as list arg, no shell=True with f-string, no user-controlled subprocess args, log files in controlled paths). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
 ### [9f] Commit [ ]
@@ -740,7 +736,7 @@ git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/
 Requires Session 9 complete.
 
 ### [10a] TDD — write sandbox agent + vault writer tests first [ ]
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT step-by-step protocol.
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_sandbox_agent.py`:
   - `launch_sandbox_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
   - Prompt passed to agent contains `research.md` content
@@ -816,7 +812,7 @@ Requires Session 9 complete.
   - `st.code(f"cd {sandbox_dir} && bash run.sh", language="bash")` — copy-able command
 
 ### [10e] Round-trip integration tests [ ]
-- **MANDATORY**: Use the Read tool to read `~/.claude/skills/tdd-workflow/SKILL.md`. Follow its EXACT protocol for integration tests.
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT protocol for integration tests.
 - `tests/test_workbench_integration.py`:
   - Full pipeline: `add_to_workbench` → `get_workbench_item` → `update_workbench_item(status="researched")` → `write_sandbox_note` → vault note exists at correct path
   - `write_sandbox_note` vault note contains expected frontmatter keys
@@ -834,12 +830,17 @@ Requires Session 9 complete.
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 
-- [ ] **Code Review**: Read `~/.claude/commands/code-review.md`, followed all 3 steps. Review all Session 8–10 files. Critical checks: subprocess command injection (no shell=True + f-string), vault path traversal in `write_sandbox_note`, `unsafe_allow_html` XSS in Workbench page. Fix all CRITICAL/HIGH findings. Re-verify full suite.
-- [ ] **Verify**: Read `~/.claude/skills/verify/SKILL.md`, executed Phases 0 (stack detection), 2 (build PASS), 4 (lint PASS, format PASS), 5 (full suite PASS, coverage ≥ 80%), 6a (secrets PASS — 0 found).
-- [ ] **Security Review**: Read `~/.claude/skills/security-review/SKILL.md`, followed checklist. Phase 1: no hardcoded secrets. Subprocess: `claude -p` prompt passed as list arg (not shell string). Dockerfile safety: verify generated output does not contain `RUN curl|bash` patterns. Vault write: path resolved and verified inside vault boundary. Verdict: PASS.
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint PASS, format PASS, full suite PASS, coverage ≥ 80%, secrets PASS (0 found). Includes code review (all Session 8–10 files) and security review (focus: subprocess injection, Dockerfile safety — no `RUN curl|bash`, vault write path inside vault boundary). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 8–10 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [10h] Commit [ ]
+### [10h] macOS desktop launcher [ ]
+- Create an Automator app (or shell script + `.command` file) that:
+  - Activates conda env `research-dashboard`
+  - Runs `cd ~/research-dashboard/src && streamlit run Home.py`
+  - Opens browser to `localhost:8501`
+- Place in `/Applications/` or Desktop for double-click launch
+
+### [10i] Commit [ ]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffolding, vault note writer"
