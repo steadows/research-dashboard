@@ -15,6 +15,7 @@ from typing import Any
 
 import anthropic
 
+from utils.paper_fetcher import fetch_paper_abstract
 from utils.prompt_builder import build_deep_prompt, build_quick_prompt
 from utils.status_tracker import get_analysis_cache, set_analysis_cache
 
@@ -259,6 +260,429 @@ def analyze_item_quick(
     return _analyze_item(
         item, project, status_file, "quick", _HAIKU_MODEL, 1024, build_quick_prompt
     )
+
+
+def summarize_paper(
+    item: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Return a 2–3 sentence plain-English summary of the paper/article.
+
+    Uses Haiku with caching. Returns empty string on failure.
+
+    Args:
+        item: Blog item dict with name, hook, source fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Plain-text summary string, or empty string on error.
+    """
+    cache_key = _build_cache_key(item["name"], "", "paper_summary_v2")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    title = item.get("name", "")
+    hook = item.get("hook", "")
+    source = item.get("source paper") or item.get("source", "")
+    tags = item.get("tags", "")
+
+    prompt = f"""\
+<context>
+A blogger is skimming a reading list and needs to quickly decide if a paper is worth their time.
+
+Title: {title}
+Hook: {hook}
+Source: {source}
+Tags: {tags}
+</context>
+
+<objective>
+Summarise what this paper is about in plain, everyday English. Cover: what problem it solves, \
+what they actually did, and what they found.
+</objective>
+
+<style>
+Short sentences. Simple words. No academic language, no jargon. If you must use a technical \
+term, immediately explain it in plain English in the same sentence. Write like you're explaining \
+it to a smart friend over coffee, not writing a paper review.
+</style>
+
+<tone>
+Casual and clear.
+</tone>
+
+<audience>
+Someone technical who is skimming quickly and wants the core idea in under 10 seconds.
+</audience>
+
+<response>
+2–3 short sentences. Plain prose, no bullet points. No opener like "This paper..." or \
+"The authors..." — jump straight to the idea.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _HAIKU_MODEL, max_tokens=200)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("summarize_paper failed for %s: %s", title, exc)
+        return ""
+
+
+def summarize_tool(
+    tool: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Return a 2–3 sentence plain-English summary of what a tool does and why it matters.
+
+    Uses Haiku with caching. Returns empty string on failure.
+
+    Args:
+        tool: Tool item dict with name, category, source, what_it_does fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Plain-text summary string, or empty string on error.
+    """
+    cache_key = _build_cache_key(tool["name"], "", "tool_summary_v1")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    name = tool.get("name", "")
+    category = tool.get("category", "")
+    source = tool.get("source", "")
+    what_it_does = tool.get("what it does", "")
+
+    prompt = f"""\
+<context>
+A developer is scanning a tools radar and needs to quickly understand what a tool does
+and whether it's worth investigating.
+
+Tool name: {name}
+Category: {category}
+Source: {source}
+Description: {what_it_does}
+</context>
+
+<objective>
+Explain what this tool does and why a developer might care about it.
+</objective>
+
+<style>
+Plain English. Short sentences. No marketing language, no jargon without explanation.
+If a technical term is needed, explain it in the same sentence.
+Write like you're telling a smart colleague about a tool you just discovered.
+</style>
+
+<tone>
+Practical and direct. Skip the hype.
+</tone>
+
+<audience>
+A developer who wants to know what the tool actually does in 10 seconds.
+</audience>
+
+<response>
+2–3 short sentences. Plain prose, no bullet points.
+No opener like "This tool..." — jump straight to what it does.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _HAIKU_MODEL, max_tokens=200)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("summarize_tool failed for %s: %s", name, exc)
+        return ""
+
+
+def analyze_blog_potential(
+    item: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> dict[str, Any]:
+    """Analyze blog post potential using Haiku with caching.
+
+    Args:
+        item: Blog item dict with name, hook, source, tags fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Analysis result dict with 'response', model, token, cost fields.
+    """
+    cache_key = _build_cache_key(item["name"], "", "blog_potential")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached
+
+    title = item.get("name", "")
+    hook = item.get("hook", "")
+    source = item.get("source paper") or item.get("source", "")
+    tags = item.get("tags", "")
+
+    prompt = f"""\
+<context>
+You are helping a technical blogger decide whether to invest time writing a post based on \
+a research paper or industry article.
+
+Title: {title}
+Hook: {hook}
+Source: {source}
+Tags: {tags}
+</context>
+
+<objective>
+Assess the blog post potential of this idea across four dimensions: target audience, \
+unique angle, timeliness, and writing effort.
+</objective>
+
+<style>
+Terse, one-line answers per dimension. No elaboration beyond what is requested.
+</style>
+
+<tone>
+Direct and opinionated. Make a call — don't hedge.
+</tone>
+
+<audience>
+The author themselves — this is a personal decision-making tool, not a pitch to an editor.
+</audience>
+
+<response>
+Exactly 4 lines, plain text only, no markdown:
+AUDIENCE: [one sentence — who specifically gets the most value from this post]
+ANGLE: [one sentence — what makes this take distinct from existing content on the topic]
+WHY NOW: [one sentence — why this is timely or strategically relevant right now]
+EFFORT: [Low / Medium / High — with a one-phrase reason]
+</response>"""
+
+    result = _call_api(prompt, _HAIKU_MODEL, max_tokens=300)
+    set_analysis_cache(cache_key, result, status_file)
+    return result
+
+
+def deep_read_paper(
+    item: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Return a 2–3 paragraph rich synthesis of the paper for an ML practitioner.
+
+    Uses Sonnet with caching. Returns empty string on failure.
+
+    Args:
+        item: Blog item dict with name, hook, source, tags fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Multi-paragraph synthesis string, or empty string on error.
+    """
+    cache_key = _build_cache_key(item["name"], "", "paper_deep_read")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    title = item.get("name", "")
+    hook = item.get("hook", "")
+    source = item.get("source paper") or item.get("source", "")
+    tags = item.get("tags", "")
+    abstract = fetch_paper_abstract(source, status_file)
+    abstract_block = f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+
+    prompt = f"""\
+<context>
+An ML practitioner is deciding whether to write a blog post about this research paper.
+They want a thorough but readable synthesis — not an academic summary, but the kind of
+breakdown a smart colleague would give over lunch.
+
+Title: {title}
+Hook: {hook}
+Source: {source}
+{abstract_block}
+Tags: {tags}
+</context>
+
+<objective>
+Write a 2–3 paragraph deep synthesis covering:
+1. What problem this solves and why it matters now
+2. The core method or idea — what they actually did (include key results if known)
+3. Limitations, open questions, and what an ML practitioner should take away
+</objective>
+
+<style>
+Plain English. Short paragraphs. Active voice. No academic hedging.
+If a technical term is needed, explain it in the same sentence using an analogy.
+Write like a senior engineer explaining to an interested non-specialist.
+</style>
+
+<tone>
+Engaged and direct. Confident about what matters, honest about gaps.
+</tone>
+
+<audience>
+An ML practitioner who has heard of the topic but hasn't read the paper.
+They want to understand what's new and whether it changes anything they should do.
+</audience>
+
+<response>
+2–3 short paragraphs. Plain prose only — no headers, no bullet points, no lists.
+No opener like "This paper..." — start with the core idea immediately.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _SONNET_MODEL, max_tokens=600)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("deep_read_paper failed for %s: %s", title, exc)
+        return ""
+
+
+def generate_blog_draft(
+    item: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Generate a ~1000 word blog post body using Sonnet.
+
+    Returns raw MDX body only (no frontmatter). Uses caching.
+    Returns empty string on failure.
+
+    Args:
+        item: Blog item dict with name, hook, source, tags fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Raw MDX body string, or empty string on error.
+    """
+    cache_key = _build_cache_key(item["name"], "", "blog_draft")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    title = item.get("name", "")
+    hook = item.get("hook", "")
+    source = item.get("source paper") or item.get("source", "")
+    tags = item.get("tags", "")
+    abstract = fetch_paper_abstract(source, status_file)
+    abstract_block = f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
+
+    prompt = f"""\
+<context>
+A technical blogger is writing a post for their personal blog. The audience is smart,
+curious people who are NOT ML specialists — they're product managers, engineers in
+adjacent fields, entrepreneurs, or curious generalists who follow AI developments.
+
+Title: {title}
+Hook: {hook}
+Source: {source}
+{abstract_block}
+Tags: {tags}
+</context>
+
+<objective>
+Write a complete blog post body of approximately 900–1100 words.
+Cover: what the problem is (with a relatable analogy), what was done and why it's clever,
+what the results show, and what readers should take away or watch for.
+</objective>
+
+<style>
+Write for a smart, curious reader who is NOT an ML specialist.
+Use analogies. Avoid jargon — if a technical term must appear, explain it in the same sentence.
+Short paragraphs (2–4 sentences). Active voice throughout.
+Use markdown headers (## and ###) to break the post into readable sections.
+</style>
+
+<tone>
+Curious, direct, and honest. Enthusiastic about interesting ideas without being hype-y.
+Acknowledge what we don't know yet.
+</tone>
+
+<audience>
+Non-specialist but technically literate readers who follow AI/ML news and want to understand
+what actually matters and why.
+</audience>
+
+<response>
+Raw MDX body only — no YAML frontmatter, no title heading at the top.
+Start directly with a compelling opening paragraph (no "Introduction" header).
+Use ## and ### markdown headers for sections.
+End with a brief "What this means" or "Why it matters" section.
+Approximately 900–1100 words.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _SONNET_MODEL, max_tokens=2000)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("generate_blog_draft failed for %s: %s", title, exc)
+        return ""
+
+
+def generate_linkedin_post(
+    item: dict,
+    draft_excerpt: str,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Generate a 3–4 sentence LinkedIn announcement for a blog post.
+
+    Uses Haiku with caching. Returns empty string on failure.
+
+    Args:
+        item: Blog item dict with name, hook fields.
+        draft_excerpt: First ~200 chars of the blog draft for context.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        LinkedIn post string, or empty string on error.
+    """
+    cache_key = _build_cache_key(item["name"], draft_excerpt[:50], "linkedin_post")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    title = item.get("name", "")
+    hook = item.get("hook", "")
+
+    prompt = f"""\
+<context>
+A technical blogger just published a new post and wants to announce it on LinkedIn.
+
+Post title: {title}
+Post hook: {hook}
+Opening excerpt: {draft_excerpt}
+</context>
+
+<objective>
+Write a short LinkedIn announcement for this blog post.
+</objective>
+
+<style>
+Conversational and authentic — not corporate, not hype-y.
+No hashtag spam. At most 2 relevant hashtags at the end.
+No "Excited to share" or "Thrilled to announce" openers.
+</style>
+
+<tone>
+Warm, direct, and genuine. Like a smart colleague sharing something they found interesting.
+</tone>
+
+<audience>
+LinkedIn connections who follow AI/ML topics — a mix of practitioners, managers, and curious generalists.
+</audience>
+
+<response>
+3–4 sentences. Plain text. End with 1–2 hashtags on a new line.
+No bullet points. No em-dashes as lists.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _HAIKU_MODEL, max_tokens=300)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("generate_linkedin_post failed for %s: %s", title, exc)
+        return ""
 
 
 def analyze_item_deep(

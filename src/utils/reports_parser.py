@@ -14,7 +14,7 @@ _TLDR_DIR = "Research/TLDR"
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 
 # Use actual unicode 📰 emoji — NOT raw \U0001f4f0 in regex
-_AI_SIGNAL_HEADER = re.compile(r"^##\s*📰\s*AI Signal\s*$", re.MULTILINE)
+_AI_SIGNAL_HEADER = re.compile(r"^##\s*📰\s*(?:Weekly\s+)?AI Signal\s*$", re.MULTILINE)
 
 
 def parse_journalclub_reports(vault_path: Path) -> list[dict[str, Any]]:

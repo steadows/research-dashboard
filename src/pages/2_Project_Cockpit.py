@@ -13,7 +13,13 @@ from typing import Any
 import streamlit as st
 
 from utils.claude_client import analyze_item_deep, analyze_item_quick
-from utils.cockpit_components import build_obsidian_url, get_project_gsd_plan
+from utils.cockpit_components import (
+    build_obsidian_url,
+    extract_gsd_context,
+    get_project_gsd_plan,
+    get_project_overview,
+    get_project_plan_files,
+)
 from utils.page_helpers import (
     EMPTY_NO_API_KEY,
     EMPTY_NO_ITEMS,
@@ -143,6 +149,7 @@ def _render_project_header(
     project: dict[str, Any],
     vault_path: Path,
     vault_name: str,
+    gsd_plan_text: str | None = None,
 ) -> None:
     """Render project header with metadata, badges, and Obsidian link.
 
@@ -150,6 +157,7 @@ def _render_project_header(
         project: Project dict with name, status, domain, tech, file_path.
         vault_path: Vault root path.
         vault_name: Vault directory name for Obsidian URL.
+        gsd_plan_text: Pre-loaded GSD plan content, or None to load on demand.
     """
     name = safe_html(project["name"])
     status = safe_html(project.get("status", ""))
@@ -183,7 +191,9 @@ def _render_project_header(
     st.markdown(f"[:material/open_in_new: Open in Obsidian]({obs_url})")
 
     # GSD plan summary
-    gsd_plan = get_project_gsd_plan(project["name"], vault_path)
+    gsd_plan = gsd_plan_text if gsd_plan_text is not None else get_project_gsd_plan(
+        project["name"], vault_path
+    )
     if gsd_plan:
         with st.expander(
             "GSD plan summary", expanded=False, icon=":material/checklist:"
@@ -244,36 +254,53 @@ def _render_item_card_body(item: dict[str, Any]) -> str:
     return body
 
 
-def _render_item_card(item: dict[str, Any], idx: int) -> None:
-    """Render a single item card with source badge and status selector.
+_ITEM_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped"]
+
+
+def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -> None:
+    """Render a single full-width item card with source badge and status/dismiss row.
 
     Args:
         item: Item dict from the project index.
-        idx: Index for unique widget keys.
+        item_id: Unique item identifier for status persistence.
+        current_status: Current status string.
     """
     card_html = _render_item_card_header(item)
     card_html += _render_item_card_body(item)
     card_html += "</div>"
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # Status selector
-    item_id = f"{item.get('source_type', 'item')}::{item['name']}"
-    current = get_item_status(item_id, _STATUS_FILE)
-    status_options = ["new", "reviewed", "queued", "skipped"]
-    current_idx = status_options.index(current) if current in status_options else 0
-    new_status = st.selectbox(
-        "Status",
-        status_options,
-        index=current_idx,
-        key=f"cockpit__item_status_{item.get('source_type', 'item')}_{item.get('name', idx)}",
-        label_visibility="collapsed",
-    )
-    if new_status != current:
-        set_item_status(item_id, new_status, _STATUS_FILE)
+    # Action row: status selector + dismiss
+    col_status, col_dismiss = st.columns([3, 1])
+
+    with col_status:
+        safe_idx = (
+            _ITEM_STATUS_OPTIONS.index(current_status)
+            if current_status in _ITEM_STATUS_OPTIONS
+            else 0
+        )
+        new_status = st.selectbox(
+            "Status",
+            _ITEM_STATUS_OPTIONS,
+            index=safe_idx,
+            key=f"cockpit__item_status_{item.get('source_type', 'item')}_{item['name']}",
+            label_visibility="collapsed",
+        )
+        if new_status != current_status:
+            set_item_status(item_id, new_status, _STATUS_FILE)
+
+    with col_dismiss:
+        if st.button(
+            "🗃️ Dismiss",
+            key=f"cockpit__item_dismiss_{item.get('source_type', 'item')}_{item['name']}",
+            use_container_width=True,
+        ):
+            set_item_status(item_id, "dismissed", _STATUS_FILE)
+            st.rerun()
 
 
 # ---------------------------------------------------------------------------
-# Flagged items feed [5e]
+# Flagged items feed [5e] — single-item navigator
 # ---------------------------------------------------------------------------
 
 
@@ -281,7 +308,10 @@ def _render_flagged_items(
     items: list[dict[str, Any]],
     project: dict[str, Any],
 ) -> None:
-    """Render the flagged items feed with filters and analysis buttons.
+    """Render the flagged items feed as a single-item navigator.
+
+    Shows one item at a time with prev/next navigation for readability.
+    Dismissed items are hidden by default.
 
     Args:
         items: List of item dicts for the selected project.
@@ -314,27 +344,59 @@ def _render_flagged_items(
         )
 
     with col2:
-        status_opts = sorted({_item_status(i) for i in items})
+        non_dismissed = sorted(
+            {s for s in {_item_status(i) for i in items} if s != "dismissed"}
+        )
         selected_status = st.segmented_control(
             "Status",
-            ["All"] + status_opts,
+            ["All"] + non_dismissed,
             key="cockpit__status_filter",
             default="All",
         )
 
-    # Apply filters
-    filtered = items
+    # Apply filters — always exclude dismissed items
+    filtered = [i for i in items if _item_status(i) != "dismissed"]
     if selected_source and selected_source != "All":
         filtered = [i for i in filtered if i.get("source_type") == selected_source]
     if selected_status and selected_status != "All":
         filtered = [i for i in filtered if _item_status(i) == selected_status]
 
-    # Render cards in 2-column grid
-    cols = st.columns(2)
-    for idx, item in enumerate(filtered):
-        with cols[idx % 2]:
-            _render_item_card(item, idx)
-            _render_analysis_buttons(item, project, idx)
+    if not filtered:
+        st.info("No items match the selected filter.")
+        return
+
+    # Navigator index — reset when filter or project changes
+    idx_key = f"cockpit__item_idx_{project['name']}"
+    if idx_key not in st.session_state or st.session_state[idx_key] >= len(filtered):
+        st.session_state[idx_key] = 0
+
+    idx = st.session_state[idx_key]
+    item = filtered[idx]
+    item_id = f"{item.get('source_type', 'item')}::{item['name']}"
+    current_status = _item_status(item)
+
+    # Navigation row
+    nav_left, nav_mid, nav_right = st.columns([1, 3, 1])
+    with nav_left:
+        if st.button("← Prev", key="cockpit__item_prev", disabled=idx == 0):
+            st.session_state[idx_key] = idx - 1
+            st.rerun()
+    with nav_mid:
+        st.markdown(
+            f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
+            f"{idx + 1} of {len(filtered)}"
+            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            unsafe_allow_html=True,
+        )
+    with nav_right:
+        if st.button(
+            "Next →", key="cockpit__item_next", disabled=idx == len(filtered) - 1
+        ):
+            st.session_state[idx_key] = idx + 1
+            st.rerun()
+
+    _render_item_card(item, item_id, current_status)
+    _render_analysis_buttons(item, project, idx)
 
 
 # ---------------------------------------------------------------------------
@@ -349,43 +411,44 @@ def _render_analysis_buttons(
 ) -> None:
     """Render Analyze (quick) and Go Deep buttons with cached results.
 
-    Uses key-only pattern for buttons. Shows cached results with timestamp.
+    Full-width single-item layout — results render below with room to breathe.
 
     Args:
         item: Item dict.
         project: Project dict.
-        idx: Index for unique widget keys.
+        idx: Unused; kept for call-site compatibility.
     """
-    col_quick, col_deep = st.columns(2)
+    source_type = item.get("source_type", "item")
+    item_name = item["name"]
 
     # Build cache keys for display check
     quick_key = hashlib.sha256(
-        f"{item['name']}:{project['name']}:quick".encode()
+        f"{item_name}:{project['name']}:quick".encode()
     ).hexdigest()
     deep_key = hashlib.sha256(
-        f"{item['name']}:{project['name']}:deep".encode()
+        f"{item_name}:{project['name']}:deep".encode()
     ).hexdigest()
 
+    col_quick, col_deep = st.columns(2)
+
     with col_quick:
-        quick_clicked = st.button(
+        if st.button(
             "Analyze",
-            key=f"cockpit__analyze_{item.get('source_type', 'item')}_{item.get('name', idx)}",
+            key=f"cockpit__analyze_{source_type}_{item_name}",
             icon=":material/bolt:",
             use_container_width=True,
-        )
-        if quick_clicked:
+        ):
             _run_analysis(analyze_item_quick, item, project, "Quick analysis")
         else:
             _show_cached_result(quick_key, "Quick analysis")
 
     with col_deep:
-        deep_clicked = st.button(
+        if st.button(
             "Go deep",
-            key=f"cockpit__deep_{item.get('source_type', 'item')}_{item.get('name', idx)}",
+            key=f"cockpit__deep_{source_type}_{item_name}",
             icon=":material/psychology:",
             use_container_width=True,
-        )
-        if deep_clicked:
+        ):
             _run_analysis(analyze_item_deep, item, project, "Deep analysis")
         else:
             _show_cached_result(deep_key, "Deep analysis")
@@ -466,6 +529,63 @@ def _render_analysis_result(result: dict[str, Any], title: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Context sources transparency
+# ---------------------------------------------------------------------------
+
+
+def _render_context_sources(
+    project: dict[str, Any],
+    vault_path: Path,
+    plan_files: list[tuple[str, Path]],
+    enriched_project: dict[str, Any],
+) -> None:
+    """Render a transparency expander showing exactly what context Claude receives.
+
+    Args:
+        project: Base project dict with file_path.
+        vault_path: Vault root path for display.
+        plan_files: List of (plan_name, resolved_path) from get_project_plan_files.
+        enriched_project: Enriched project dict with 'overview' and 'gsd_plan' keys.
+    """
+    overview = enriched_project.get("overview", "")
+    gsd_context = enriched_project.get("gsd_plan", "")
+    total_chars = len(overview) + len(gsd_context)
+    n_files = 1 + len(plan_files)
+
+    with st.expander(
+        f"📋 Analysis context — {total_chars:,} chars from {n_files} file(s)",
+        expanded=False,
+    ):
+        # File list
+        vault_str = str(vault_path)
+        project_rel = f"Projects/{project['name']}.md"
+        file_lines = [f'📄 <code>{project_rel}</code>']
+        for _, plan_path in plan_files:
+            plan_rel = str(plan_path).replace(vault_str + "/", "")
+            file_lines.append(f'📄 <code>{plan_rel}</code>')
+
+        st.markdown(
+            f'<div style="font-size:0.8rem;color:#9CA3AF;margin-bottom:8px">'
+            f'<strong style="color:#D1D5DB">Files on tap</strong><br>'
+            + "<br>".join(file_lines)
+            + ("" if plan_files else "<br><span style='color:#6B7280'>⚠ No plan files linked in ## Plans section</span>")
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Extracted context preview
+        if overview:
+            st.caption("Project overview (from .md)")
+            st.code(overview, language=None)
+
+        if gsd_context:
+            st.caption("GSD context (Context + Architecture sections + active work headers)")
+            st.code(gsd_context, language=None)
+        elif plan_files:
+            st.caption("⚠ No Context / Architecture sections or incomplete headers found in plan files.")
+
+
+# ---------------------------------------------------------------------------
 # Main page
 # ---------------------------------------------------------------------------
 
@@ -497,12 +617,35 @@ def _run_cockpit() -> None:
         st.caption(f"Project '{selected_name}' not found in vault.")
         return
 
+    # Resolve all plan files linked from the project's ## Plans section
+    plan_files = get_project_plan_files(project, vault_path)
+    plan_texts = [(name, p.read_text(encoding="utf-8")) for name, p in plan_files]
+
+    # Combined GSD plan text for header UI expander (all plans concatenated)
+    combined_plan_text = (
+        "\n\n---\n\n".join(f"# {name}\n\n{text}" for name, text in plan_texts)
+        if plan_texts else None
+    )
+
+    # Build enriched project dict for LLM context
+    combined_gsd_context = "\n\n".join(
+        extract_gsd_context(text) for _, text in plan_texts
+    )
+    enriched_project = {
+        **project,
+        "overview": get_project_overview(project),
+        "gsd_plan": combined_gsd_context,
+    }
+
     # Project header
-    _render_project_header(project, vault_path, vault_name)
+    _render_project_header(project, vault_path, vault_name, combined_plan_text)
+
+    # Context sources transparency expander
+    _render_context_sources(project, vault_path, plan_files, enriched_project)
 
     # Flagged items feed
     items = project_index.get(selected_name, [])
-    _render_flagged_items(items, project)
+    _render_flagged_items(items, enriched_project)
 
 
 _run_cockpit()

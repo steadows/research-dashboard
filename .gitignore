@@ -31,3 +31,7 @@ Thumbs.db
 
 # App state
 status.json
+
+SESSION_*.md
+ralph.sh
+PROMPT.md

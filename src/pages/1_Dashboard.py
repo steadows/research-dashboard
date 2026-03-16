@@ -11,7 +11,21 @@ from typing import Any
 
 import streamlit as st
 
+from utils.blog_publisher import (
+    archive_item,
+    get_draft_path,
+    read_draft_body,
+    write_draft_mdx,
+)
 from utils.blog_queue_parser import parse_blog_queue
+from utils.claude_client import (
+    analyze_blog_potential,
+    deep_read_paper,
+    generate_blog_draft,
+    generate_linkedin_post,
+    summarize_paper,
+    summarize_tool,
+)
 from utils.page_helpers import (
     EMPTY_NO_BLOG,
     EMPTY_NO_REPORTS,
@@ -121,7 +135,9 @@ def _render_top_picks(jc_reports: list[dict[str, Any]]) -> None:
         return
 
     latest = jc_reports[0]
-    top_picks = latest.get("sections", {}).get("Top Picks", "")
+    top_picks = latest.get("sections", {}).get("Top Picks This Week", "") or latest.get(
+        "sections", {}
+    ).get("Top Picks", "")
     if top_picks:
         # No unsafe_allow_html — Streamlit markdown is XSS-safe by default
         st.markdown(top_picks)
@@ -188,7 +204,7 @@ def _render_ai_signal_excerpt(tldr_reports: list[dict[str, Any]]) -> None:
 
 
 def _render_blog_queue_tab(blog_items: list[dict[str, Any]]) -> None:
-    """Render Blog Queue tab with card grid and filters."""
+    """Render Blog Queue tab as a single-item review flow."""
     st.subheader("✍️ Blog Queue")
 
     if not blog_items:
@@ -204,7 +220,342 @@ def _render_blog_queue_tab(blog_items: list[dict[str, Any]]) -> None:
     )
 
     filtered = _filter_by_status(blog_items, selected_status)
-    _render_blog_cards(filtered)
+    if not filtered:
+        st.info("No items match the selected filter.")
+        return
+
+    # Reset index when filter changes or index out of range
+    idx_key = "dashboard__blog_queue_idx"
+    if idx_key not in st.session_state or st.session_state[idx_key] >= len(filtered):
+        st.session_state[idx_key] = 0
+
+    idx = st.session_state[idx_key]
+    item = filtered[idx]
+    item_id = f"blog::{item['name']}"
+    current_status = get_item_status(item_id)
+
+    # Navigation row
+    nav_left, nav_mid, nav_right = st.columns([1, 3, 1])
+    with nav_left:
+        if st.button("← Prev", key="dashboard__blog_prev", disabled=idx == 0):
+            st.session_state[idx_key] = idx - 1
+            st.rerun()
+    with nav_mid:
+        st.markdown(
+            f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
+            f"{idx + 1} of {len(filtered)}"
+            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            unsafe_allow_html=True,
+        )
+    with nav_right:
+        if st.button(
+            "Next →", key="dashboard__blog_next", disabled=idx == len(filtered) - 1
+        ):
+            st.session_state[idx_key] = idx + 1
+            st.rerun()
+
+    _render_blog_review_card(item, item_id, current_status)
+
+
+_STATUS_OPTIONS = ["new", "reviewed", "queued", "drafted", "dismissed", "skipped"]
+
+
+def _render_blog_review_card(
+    item: dict[str, Any], item_id: str, current_status: str
+) -> None:
+    """Render a single full-width blog review card with full action pipeline."""
+    name = safe_html(item["name"])
+    hook = safe_html(item.get("hook", ""))
+    source = safe_html(item.get("source paper") or item.get("source", ""))
+    tags_raw = item.get("tags", "")
+    projects = item.get("projects", [])
+    added = safe_html(item.get("added", ""))
+
+    tag_html = _build_tag_html(tags_raw)
+    project_html = _build_project_html(projects)
+
+    # Auto-fetch paper summary (Haiku, cached) — shown inline on the card
+    summary_key = f"dashboard__blog_summary_{item['name']}"
+    if summary_key not in st.session_state:
+        with st.spinner("Summarizing paper…"):
+            st.session_state[summary_key] = summarize_paper(item)
+    summary = safe_html(st.session_state[summary_key])
+
+    _render_card_html(name, hook, summary, source, project_html, tag_html, added)
+    _render_action_row(item, item_id, current_status)
+    _render_analysis_panel(item, current_status)
+
+
+def _build_tag_html(tags_raw: str) -> str:
+    """Build HTML badge string for comma-separated tags."""
+    if not tags_raw:
+        return ""
+    tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+    return " ".join(
+        f'<span style="background:#1F2937;color:#9CA3AF;font-size:0.72rem;'
+        f'padding:2px 8px;border-radius:4px">{safe_html(t)}</span>'
+        for t in tag_list
+    )
+
+
+def _build_project_html(projects: list[str]) -> str:
+    """Build HTML badge string for project wiki-link names."""
+    if not projects:
+        return ""
+    return " ".join(
+        f'<span style="background:#1E3A5F;color:#60A5FA;font-size:0.72rem;'
+        f'padding:2px 8px;border-radius:4px">{safe_html(p)}</span>'
+        for p in projects
+    )
+
+
+def _render_card_html(
+    name: str,
+    hook: str,
+    summary: str,
+    source: str,
+    project_html: str,
+    tag_html: str,
+    added: str,
+) -> None:
+    """Render the main card HTML block."""
+    card_html = f"""
+<div class="surface-card" style="padding:24px">
+  <div style="font-size:1.2rem;font-weight:600;line-height:1.4;margin-bottom:12px">{name}</div>
+"""
+    if hook:
+        card_html += (
+            f'  <div style="color:#D1D5DB;font-size:0.95rem;line-height:1.6;margin-bottom:16px;'
+            f'border-left:3px solid #3B82F6;padding-left:12px">{hook}</div>\n'
+        )
+    if summary:
+        card_html += (
+            f'  <div style="color:#9CA3AF;font-size:0.875rem;line-height:1.65;'
+            f'margin-bottom:16px">{summary}</div>\n'
+        )
+    if source:
+        card_html += (
+            f'  <div style="color:#6B7280;font-size:0.8rem;margin-bottom:12px">'
+            f'<span style="color:#9CA3AF">Source:</span> {source}</div>\n'
+        )
+    if project_html:
+        card_html += f'  <div style="margin-bottom:10px">{project_html}</div>\n'
+    if tag_html:
+        card_html += f'  <div style="margin-bottom:8px">{tag_html}</div>\n'
+    if added:
+        card_html += f'  <div style="color:#4B5563;font-size:0.72rem;margin-top:8px">Added {added}</div>\n'
+    card_html += "</div>"
+    st.markdown(card_html, unsafe_allow_html=True)
+
+
+def _render_action_row(item: dict[str, Any], item_id: str, current_status: str) -> None:
+    """Render the action buttons row: Deep Read, Analyze, Generate Draft, Status, Dismiss."""
+    item_name = item["name"]
+    col_deep, col_analyze, col_draft, col_status, col_dismiss = st.columns(
+        [1, 2, 2, 1, 1]
+    )
+
+    with col_deep:
+        _handle_deep_read_button(item, item_name)
+
+    with col_analyze:
+        _handle_analyze_button(item, item_name)
+
+    with col_draft:
+        _handle_draft_button(item, item_name, current_status)
+
+    with col_status:
+        _handle_status_selector(item_id, item_name, current_status)
+
+    with col_dismiss:
+        _handle_dismiss_button(item, item_id, item_name, current_status)
+
+
+def _handle_deep_read_button(item: dict[str, Any], item_name: str) -> None:
+    """Render and handle the Deep Read toggle button."""
+    deep_key = f"dashboard__blog_deep_read_{item_name}"
+    if st.button("🔬 Deep Read", key=f"dashboard__blog_deep_btn_{item_name}"):
+        if deep_key not in st.session_state:
+            with st.spinner("Deep reading with Sonnet…"):
+                st.session_state[deep_key] = deep_read_paper(item)
+
+
+def _handle_analyze_button(item: dict[str, Any], item_name: str) -> None:
+    """Render and handle the Analyze Blog Potential button."""
+    analysis_key = f"dashboard__blog_analysis_{item_name}"
+    if st.button("✨ Analyze", key=f"dashboard__blog_analyze_{item_name}"):
+        with st.spinner("Analyzing…"):
+            try:
+                result = analyze_blog_potential(item)
+                st.session_state[analysis_key] = result["response"]
+            except Exception as exc:
+                st.error(f"Analysis failed: {exc}")
+
+
+def _handle_draft_button(
+    item: dict[str, Any], item_name: str, current_status: str
+) -> None:
+    """Render and handle the Generate Draft button."""
+    draft_exists = get_draft_path(item) is not None
+    disabled = draft_exists or current_status == "drafted"
+
+    if st.button(
+        "📝 Generate Draft",
+        key=f"dashboard__blog_draft_btn_{item_name}",
+        disabled=disabled,
+    ):
+        _run_draft_generation(item, item_name)
+
+
+def _run_draft_generation(item: dict[str, Any], item_name: str) -> None:
+    """Execute the full draft generation pipeline."""
+    linkedin_key = f"dashboard__blog_linkedin_{item_name}"
+    draft_path_key = f"dashboard__blog_draft_path_{item_name}"
+
+    with st.spinner("Drafting with Sonnet…"):
+        body = generate_blog_draft(item)
+
+    if not body:
+        st.error("Draft generation failed. Check API key and try again.")
+        return
+
+    with st.spinner("Generating LinkedIn post…"):
+        excerpt = body[:200]
+        linkedin = generate_linkedin_post(item, excerpt)
+
+    try:
+        dest = write_draft_mdx(item, body)
+    except FileExistsError as exc:
+        st.warning(str(exc))
+        dest = get_draft_path(item)
+
+    set_item_status(f"blog::{item_name}", "drafted")
+    st.session_state[linkedin_key] = linkedin
+    st.session_state[draft_path_key] = str(dest)
+    st.success(f"Draft written to `{dest}`")
+    st.rerun()
+
+
+def _handle_status_selector(item_id: str, item_name: str, current_status: str) -> None:
+    """Render the status dropdown."""
+    current_idx = (
+        _STATUS_OPTIONS.index(current_status)
+        if current_status in _STATUS_OPTIONS
+        else 0
+    )
+    new_status = st.selectbox(
+        "Status",
+        _STATUS_OPTIONS,
+        index=current_idx,
+        key=f"dashboard__blog_status_{item_name}",
+        label_visibility="collapsed",
+    )
+    if new_status != current_status:
+        set_item_status(item_id, new_status)
+
+
+def _handle_dismiss_button(
+    item: dict[str, Any],
+    item_id: str,
+    item_name: str,
+    current_status: str,
+) -> None:
+    """Render and handle the Dismiss button."""
+    if current_status == "dismissed":
+        st.markdown(
+            '<span style="color:#6B7280;font-size:0.75rem">archived</span>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    vault_path_str = st.session_state.get("vault_path_str", "")
+    if st.button("🗃️ Dismiss", key=f"dashboard__blog_dismiss_{item_name}"):
+        if vault_path_str:
+            try:
+                archive_item(item, Path(vault_path_str))
+            except Exception as exc:
+                logger.warning("archive_item failed for %s: %s", item_name, exc)
+        set_item_status(item_id, "dismissed")
+        st.rerun()
+
+
+def _render_analysis_panel(item: dict[str, Any], current_status: str) -> None:
+    """Render deep read, analysis results, and draft expanders below the card."""
+    item_name = item["name"]
+
+    # Deep Read result
+    deep_key = f"dashboard__blog_deep_read_{item_name}"
+    if deep_key in st.session_state and st.session_state[deep_key]:
+        with st.expander("🔬 Deep Read"):
+            st.markdown(st.session_state[deep_key])
+
+    # Blog potential analysis
+    analysis_key = f"dashboard__blog_analysis_{item_name}"
+    if analysis_key in st.session_state:
+        _render_blog_potential_panel(st.session_state[analysis_key])
+
+    # Draft view — auto-load for drafted items
+    draft_path_key = f"dashboard__blog_draft_path_{item_name}"
+    linkedin_key = f"dashboard__blog_linkedin_{item_name}"
+
+    if current_status == "drafted" or draft_path_key in st.session_state:
+        _render_draft_panel(item, draft_path_key, linkedin_key)
+
+
+def _render_blog_potential_panel(analysis_text: str) -> None:
+    """Render the blog potential analysis as a formatted card."""
+    lines = analysis_text.strip().splitlines()
+    analysis_html = '<div class="surface-card" style="padding:16px;margin-top:8px">'
+    for line in lines:
+        if ":" in line:
+            label, _, rest = line.partition(":")
+            analysis_html += (
+                f'<div style="margin-bottom:8px">'
+                f'<span style="color:#F59E0B;font-size:0.75rem;font-weight:600">'
+                f"{safe_html(label.strip())}</span>"
+                f'<span style="color:#D1D5DB;font-size:0.85rem"> {safe_html(rest.strip())}</span>'
+                f"</div>"
+            )
+        elif line.strip():
+            analysis_html += (
+                f'<div style="color:#9CA3AF;font-size:0.85rem">{safe_html(line)}</div>'
+            )
+    analysis_html += "</div>"
+    st.markdown(analysis_html, unsafe_allow_html=True)
+
+
+def _render_draft_panel(
+    item: dict[str, Any], draft_path_key: str, linkedin_key: str
+) -> None:
+    """Render the draft expander and LinkedIn post for drafted items."""
+    # Resolve path
+    draft_path = st.session_state.get(draft_path_key)
+    if not draft_path:
+        path_obj = get_draft_path(item)
+        draft_path = str(path_obj) if path_obj else None
+
+    if draft_path:
+        st.markdown(
+            f'<div style="color:#10B981;font-size:0.8rem;margin:8px 0">📄 Draft: '
+            f"<code>{safe_html(draft_path)}</code></div>",
+            unsafe_allow_html=True,
+        )
+
+    # Render body
+    body = read_draft_body(item)
+    if body:
+        with st.expander("📄 View Draft"):
+            st.markdown(body)
+
+    # LinkedIn post
+    linkedin = st.session_state.get(linkedin_key)
+    if linkedin:
+        st.text_area(
+            "LinkedIn announcement",
+            value=linkedin,
+            height=120,
+            key=f"dashboard__blog_linkedin_display_{item['name']}",
+        )
 
 
 def _filter_by_status(items: list[dict[str, Any]], status: str) -> list[dict[str, Any]]:
@@ -214,60 +565,15 @@ def _filter_by_status(items: list[dict[str, Any]], status: str) -> list[dict[str
     return [i for i in items if i.get("status", "") == status]
 
 
-def _render_blog_cards(items: list[dict[str, Any]]) -> None:
-    """Render blog items as a card grid."""
-    cols = st.columns(2)
-    for idx, item in enumerate(items):
-        with cols[idx % 2]:
-            _render_blog_card(item, idx)
-
-
-def _render_blog_card(item: dict[str, Any], idx: int) -> None:
-    """Render a single blog queue card with status selector."""
-    name = safe_html(item["name"])
-    angle = safe_html(item.get("angle", ""))
-    target = safe_html(item.get("target", ""))
-    status = safe_html(item.get("status", ""))
-    projects = ", ".join(safe_html(p) for p in item.get("projects", []))
-
-    card_html = (
-        f'<div class="surface-card">'
-        f"<strong>{name}</strong><br>"
-        f'<span class="status-badge">{status}</span>'
-    )
-    if angle:
-        card_html += f"<br><em>{angle}</em>"
-    if target:
-        card_html += f'<br><span style="color:#9CA3AF">Target: {target}</span>'
-    if projects:
-        card_html += f'<br><span style="color:#60A5FA">{projects}</span>'
-    card_html += "</div>"
-
-    st.markdown(card_html, unsafe_allow_html=True)
-
-    # Status selector — use item name for stable key across filter changes
-    item_id = f"blog::{item['name']}"
-    current = get_item_status(item_id)
-    status_options = ["new", "reviewed", "queued", "skipped"]
-    current_idx = status_options.index(current) if current in status_options else 0
-    new_status = st.selectbox(
-        "Status",
-        status_options,
-        index=current_idx,
-        key=f"dashboard__blog_status_{item['name']}",
-        label_visibility="collapsed",
-    )
-    if new_status != current:
-        set_item_status(item_id, new_status)
-
-
 # ---------------------------------------------------------------------------
 # Tools Radar tab
 # ---------------------------------------------------------------------------
 
+_TOOL_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped"]
+
 
 def _render_tools_radar_tab(tools: list[dict[str, Any]]) -> None:
-    """Render Tools Radar tab with category colors and filters."""
+    """Render Tools Radar tab as a single-item review flow."""
     st.subheader("🔧 Tools Radar")
 
     if not tools:
@@ -283,7 +589,43 @@ def _render_tools_radar_tab(tools: list[dict[str, Any]]) -> None:
     )
 
     filtered = _filter_tools_by_category(tools, selected_cat)
-    _render_tool_cards(filtered)
+    if not filtered:
+        st.info("No tools match the selected filter.")
+        return
+
+    # Reset index when filter changes or index out of range
+    idx_key = "dashboard__tools_radar_idx"
+    if idx_key not in st.session_state or st.session_state[idx_key] >= len(filtered):
+        st.session_state[idx_key] = 0
+
+    idx = st.session_state[idx_key]
+    tool = filtered[idx]
+    item_id = f"tool::{tool['name']}"
+    current_status = get_item_status(item_id)
+
+    # Navigation row
+    nav_left, nav_mid, nav_right = st.columns([1, 3, 1])
+    with nav_left:
+        if st.button("← Prev", key="dashboard__tools_prev", disabled=idx == 0):
+            st.session_state[idx_key] = idx - 1
+            st.rerun()
+    with nav_mid:
+        st.markdown(
+            f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
+            f"{idx + 1} of {len(filtered)}"
+            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            unsafe_allow_html=True,
+        )
+    with nav_right:
+        if st.button(
+            "Next →",
+            key="dashboard__tools_next",
+            disabled=idx == len(filtered) - 1,
+        ):
+            st.session_state[idx_key] = idx + 1
+            st.rerun()
+
+    _render_tool_review_card(tool, item_id, current_status)
 
 
 def _filter_tools_by_category(
@@ -295,60 +637,68 @@ def _filter_tools_by_category(
     return [t for t in tools if t.get("category", "Uncategorized") == category]
 
 
-def _render_tool_cards(tools: list[dict[str, Any]]) -> None:
-    """Render tool items as cards."""
-    cols = st.columns(2)
-    for idx, tool in enumerate(tools):
-        with cols[idx % 2]:
-            _render_tool_card(tool, idx)
-
-
-def _render_tool_card(tool: dict[str, Any], idx: int) -> None:
-    """Render a single tool card with category badge and project tags."""
+def _render_tool_review_card(
+    tool: dict[str, Any], item_id: str, current_status: str
+) -> None:
+    """Render a single full-width tool review card with synthesis."""
     name = safe_html(tool["name"])
     category = safe_html(tool.get("category", "Uncategorized"))
     color = _get_category_color(tool.get("category", ""))
-    description = safe_html(tool.get("what it does", ""))
     source = safe_html(tool.get("source", ""))
     projects = tool.get("projects", [])
 
-    # Build project tags HTML
-    project_tags = " ".join(
+    project_html = " ".join(
         f'<span class="amber-chip">{safe_html(p)}</span>' for p in projects
     )
 
-    card_html = (
-        f'<div class="surface-card">'
-        f"<strong>{name}</strong> "
-        f'<span style="background:{color};color:#fff;padding:2px 8px;'
-        f'border-radius:4px;font-size:0.7rem">{category}</span><br>'
-    )
-    if description:
-        card_html += f"<em>{description}</em><br>"
+    # Auto-synthesize plain-English description (Haiku, cached)
+    summary_key = f"dashboard__tool_summary_{tool['name']}"
+    if summary_key not in st.session_state:
+        with st.spinner("Synthesizing…"):
+            st.session_state[summary_key] = summarize_tool(tool)
+    summary = safe_html(st.session_state[summary_key])
+
+    card_html = f"""
+<div class="surface-card" style="padding:24px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <span style="font-size:1.2rem;font-weight:600">{name}</span>
+    <span style="background:{color};color:#fff;padding:2px 10px;
+                 border-radius:4px;font-size:0.7rem;font-weight:600">{category}</span>
+  </div>
+"""
+    if summary:
+        card_html += (
+            f'  <div style="color:#D1D5DB;font-size:0.925rem;line-height:1.65;'
+            f'margin-bottom:16px">{summary}</div>\n'
+        )
     if source:
         card_html += (
-            f'<span style="color:#9CA3AF;font-size:0.8em">Source: {source}</span><br>'
+            f'  <div style="color:#6B7280;font-size:0.8rem;margin-bottom:12px">'
+            f'<span style="color:#9CA3AF">Source:</span> {source}</div>\n'
         )
-    if project_tags:
-        card_html += f"{project_tags}"
+    if project_html:
+        card_html += f'  <div style="margin-top:4px">{project_html}</div>\n'
     card_html += "</div>"
 
     st.markdown(card_html, unsafe_allow_html=True)
 
-    # Status selector — use item name for stable key across filter changes
-    item_id = f"tool::{tool['name']}"
-    current = get_item_status(item_id)
-    status_options = ["new", "reviewed", "queued", "skipped"]
-    current_idx = status_options.index(current) if current in status_options else 0
-    new_status = st.selectbox(
-        "Status",
-        status_options,
-        index=current_idx,
-        key=f"dashboard__tool_status_{tool['name']}",
-        label_visibility="collapsed",
-    )
-    if new_status != current:
-        set_item_status(item_id, new_status)
+    # Status selector
+    col_status, _ = st.columns([1, 3])
+    with col_status:
+        current_idx = (
+            _TOOL_STATUS_OPTIONS.index(current_status)
+            if current_status in _TOOL_STATUS_OPTIONS
+            else 0
+        )
+        new_status = st.selectbox(
+            "Status",
+            _TOOL_STATUS_OPTIONS,
+            index=current_idx,
+            key=f"dashboard__tool_status_{tool['name']}",
+            label_visibility="collapsed",
+        )
+        if new_status != current_status:
+            set_item_status(item_id, new_status)
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +821,7 @@ def _run_dashboard() -> None:
 
     vault_path = get_vault_path()
     vault_str = str(vault_path)
+    st.session_state["vault_path_str"] = vault_str
 
     # Load all data through cached wrappers with graceful fallbacks
     jc_reports = safe_parse(

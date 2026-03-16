@@ -106,12 +106,13 @@ def tmp_vault(tmp_path: Path) -> Path:
         "# Blog Queue\n\n"
         "## Building a Code Knowledge Graph\n"
         "**Status:** Draft\n"
-        "**Angle:** Technical deep-dive on Axon architecture.\n"
+        "**Hook:** Technical deep-dive on Axon architecture.\n"
+        "**Tags:** research, graph, ml\n"
         "**Projects:** [[Axon]]\n"
-        "**Target:** Dev.to\n\n"
+        "**Added:** 2026-03-01\n\n"
         "## AI CFO: Building Wealth Manager\n"
         "**Status:** Idea\n"
-        "**Angle:** Journey building a personal finance AI.\n"
+        "**Hook:** Journey building a personal finance AI.\n"
         "**Projects:** [[Wealth Manager]]\n"
     )
 

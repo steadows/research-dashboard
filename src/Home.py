@@ -15,6 +15,18 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env.local")
 
 logger = logging.getLogger(__name__)
 
+# Wire up llm_trace logger so LLM_TRACE=1 output reaches the console.
+# propagate=False is set in claude_client to prevent bleed-through on prod;
+# we attach a stderr handler here so it's visible when running locally.
+_llm_trace_log = logging.getLogger("llm_trace")
+if not _llm_trace_log.handlers:
+    _llm_handler = logging.StreamHandler()
+    _llm_handler.setFormatter(
+        logging.Formatter("%(asctime)s [llm_trace] %(levelname)s — %(message)s")
+    )
+    _llm_trace_log.addHandler(_llm_handler)
+_llm_trace_log.setLevel(logging.DEBUG)
+
 # ---------------------------------------------------------------------------
 # Page config (must be first Streamlit call)
 # ---------------------------------------------------------------------------

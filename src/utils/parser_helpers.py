@@ -68,20 +68,29 @@ def parse_fields(body: str) -> dict[str, str]:
     return fields
 
 
+_PROJECT_FIELD_ALIASES = ("projects", "apply to", "try on")
+
+
 def parse_project_links(body: str) -> list[str]:
-    """Extract project names from a **Projects:** field line.
+    """Extract project names from a project-reference field line.
+
+    Checks multiple field name aliases used across vault file types:
+    - ``**Projects:**`` (test fixtures, blog queue)
+    - ``**Apply to:**`` (Tools Radar)
+    - ``**Try on:**`` (Methods to Try)
 
     Args:
-        body: Section body containing a **Projects:** field with wiki-links.
+        body: Section body containing a project field with wiki-links.
 
     Returns:
         List of project names referenced.
     """
     fields = parse_fields(body)
-    projects_line = fields.get("projects", "")
-    if not projects_line:
-        return []
-    return parse_wiki_links(projects_line)
+    for alias in _PROJECT_FIELD_ALIASES:
+        projects_line = fields.get(alias, "")
+        if projects_line:
+            return parse_wiki_links(projects_line)
+    return []
 
 
 def build_item(

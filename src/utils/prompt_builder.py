@@ -79,16 +79,40 @@ def build_quick_prompt(item: dict, project: dict) -> str:
     item_context = _format_item_context(item)
     project_context = _format_project_context(project, include_full=False)
 
-    return (
-        "You are a research relevance analyst. Assess how relevant this "
-        "item is to the given project.\n\n"
-        f"--- ITEM ---\n{item_context}\n\n"
-        f"--- PROJECT ---\n{project_context}\n\n"
-        "Provide a brief relevance assessment:\n"
-        "1. Relevance score (1-5, where 5 = directly applicable)\n"
-        "2. One-sentence explanation of why it's relevant or not\n"
-        "3. Suggested next action (try it, skip, bookmark, investigate)"
-    )
+    return f"""\
+<context>
+You are a research relevance analyst. A researcher is triaging items from their reading \
+list against active projects to decide where to focus next.
+
+--- ITEM ---
+{item_context}
+
+--- PROJECT ---
+{project_context}
+</context>
+
+<objective>
+Assess how relevant this item is to the given project.
+</objective>
+
+<style>
+Concise and structured. Three lines, nothing more.
+</style>
+
+<tone>
+Analytical and direct.
+</tone>
+
+<audience>
+The researcher themselves — this feeds a personal triage dashboard.
+</audience>
+
+<response>
+Exactly 3 lines, plain text:
+1. Relevance score (1–5, where 5 = directly applicable)
+2. One-sentence explanation of why it is or isn't relevant
+3. Suggested next action (try it / skip / bookmark / investigate)
+</response>"""
 
 
 def build_deep_prompt(item: dict, project: dict) -> str:
@@ -107,16 +131,43 @@ def build_deep_prompt(item: dict, project: dict) -> str:
     item_context = _format_item_context(item)
     project_context = _format_project_context(project, include_full=True)
 
-    return (
-        "You are a senior research engineer performing a deep analysis "
-        "of how a research item applies to a specific project.\n\n"
-        f"--- ITEM ---\n{item_context}\n\n"
-        f"--- PROJECT (Full Context) ---\n{project_context}\n\n"
-        "Provide a comprehensive analysis:\n"
-        "1. Relevance score (1-5, where 5 = directly applicable)\n"
-        "2. Detailed explanation of relevance to this project\n"
-        "3. How this could be integrated into the current tech stack\n"
-        "4. Potential risks or trade-offs\n"
-        "5. Concrete next steps for implementation\n"
-        "6. Estimated effort (hours/days) and complexity (low/medium/high)"
-    )
+    return f"""\
+<context>
+You are a senior research engineer performing a deep analysis of how a research item \
+applies to a specific project. You have full project context including the tech stack, \
+current status, and active GSD plan.
+
+--- ITEM ---
+{item_context}
+
+--- PROJECT (Full Context) ---
+{project_context}
+</context>
+
+<objective>
+Provide a comprehensive analysis of this item's applicability to the project, including \
+integration path, risks, and concrete next steps.
+</objective>
+
+<style>
+Detailed and structured. Use numbered sections matching the response format exactly.
+</style>
+
+<tone>
+Expert, technical, and pragmatic. Prioritise actionability over thoroughness.
+</tone>
+
+<audience>
+The engineer who owns the project — they want actionable recommendations, not summaries \
+of what they already know.
+</audience>
+
+<response>
+Six numbered sections:
+1. Relevance score (1–5, where 5 = directly applicable)
+2. Detailed explanation of relevance to this specific project
+3. How this could be integrated into the current tech stack
+4. Potential risks or trade-offs
+5. Concrete next steps for implementation
+6. Estimated effort (hours/days) and complexity (low/medium/high)
+</response>"""

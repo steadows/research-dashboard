@@ -16,7 +16,7 @@ class TestParseBlogQueue:
             i for i in items if i["name"] == "Building a Code Knowledge Graph"
         )
         assert axon_post["status"] == "Draft"
-        assert axon_post["target"] == "Dev.to"
+        assert axon_post["hook"] == "Technical deep-dive on Axon architecture."
         assert "Axon" in axon_post["projects"]
 
     def test_partial_entry_has_defaults(self, tmp_path: Path) -> None:

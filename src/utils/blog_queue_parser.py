@@ -12,8 +12,11 @@ _BLOG_QUEUE_FILE = "Writing/Blog Queue.md"
 
 _BLOG_DEFAULTS: dict[str, Any] = {
     "status": "Idea",
-    "angle": "",
-    "target": "",
+    "hook": "",
+    "source": "",
+    "source paper": "",
+    "tags": "",
+    "added": "",
 }
 
 
