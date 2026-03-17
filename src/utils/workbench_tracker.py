@@ -297,6 +297,8 @@ _ALLOWED_UPDATE_FIELDS = frozenset(
         "pid",
         "log_file",
         "reviewed",
+        "retry_count",
+        "model",
     }
 )
 

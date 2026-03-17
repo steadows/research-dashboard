@@ -71,11 +71,15 @@ class TestLaunchResearchAgent:
         assert "claude-opus-4-6" in cmd
         assert "--output-format" in cmd
         assert "stream-json" in cmd
+        assert "--allowedTools" in cmd
+        assert "--fallback-model" in cmd
 
         # shell=True must NOT be used
         assert call_args[1].get("shell") is not True
 
-        assert result is mock_proc
+        proc, model_used = result
+        assert proc is mock_proc
+        assert model_used == "claude-opus-4-6"
 
     def test_creates_output_dir_if_missing(self, tmp_path: Path) -> None:
         """launch_research_agent creates output_dir when it doesn't exist."""
@@ -373,3 +377,173 @@ class TestRenderResearchHtml:
 
         html_content = html_path.read_text(encoding="utf-8")
         assert "#0A0A0A" in html_content or "0a0a0a" in html_content.lower()
+
+
+# ---------------------------------------------------------------------------
+# get_fallback_model
+# ---------------------------------------------------------------------------
+
+
+class TestGetFallbackModel:
+    """Tests for get_fallback_model."""
+
+    def test_opus_falls_back_to_sonnet(self) -> None:
+        """Opus returns Sonnet as fallback."""
+        from utils.research_agent import get_fallback_model
+
+        assert get_fallback_model("claude-opus-4-6") == "claude-sonnet-4-6"
+
+    def test_sonnet_has_no_fallback(self) -> None:
+        """Sonnet is the end of the chain — returns None."""
+        from utils.research_agent import get_fallback_model
+
+        assert get_fallback_model("claude-sonnet-4-6") is None
+
+    def test_unknown_model_returns_none(self) -> None:
+        """Unknown model ID returns None."""
+        from utils.research_agent import get_fallback_model
+
+        assert get_fallback_model("unknown-model") is None
+
+    def test_none_defaults_to_opus_fallback(self) -> None:
+        """None input treated as Opus — falls back to Sonnet."""
+        from utils.research_agent import get_fallback_model
+
+        assert get_fallback_model(None) == "claude-sonnet-4-6"
+
+
+# ---------------------------------------------------------------------------
+# is_overload_failure
+# ---------------------------------------------------------------------------
+
+
+class TestIsOverloadFailure:
+    """Tests for is_overload_failure."""
+
+    def test_detects_529_in_log(self, tmp_path: Path) -> None:
+        """Returns True when log contains 529 status code."""
+        from utils.research_agent import is_overload_failure
+
+        log = tmp_path / "agent.log"
+        log.write_text("starting...\nAPI Error: Repeated 529 Overloaded errors\n")
+        assert is_overload_failure(log) is True
+
+    def test_detects_overloaded_keyword(self, tmp_path: Path) -> None:
+        """Returns True when log contains 'Overloaded' keyword."""
+        from utils.research_agent import is_overload_failure
+
+        log = tmp_path / "agent.log"
+        log.write_text("Error: Overloaded\n")
+        assert is_overload_failure(log) is True
+
+    def test_returns_false_for_other_errors(self, tmp_path: Path) -> None:
+        """Returns False for non-overload errors."""
+        from utils.research_agent import is_overload_failure
+
+        log = tmp_path / "agent.log"
+        log.write_text("Error: 401 Unauthorized\n")
+        assert is_overload_failure(log) is False
+
+    def test_returns_false_for_missing_log(self, tmp_path: Path) -> None:
+        """Returns False when log file doesn't exist."""
+        from utils.research_agent import is_overload_failure
+
+        assert is_overload_failure(tmp_path / "nonexistent.log") is False
+
+
+# ---------------------------------------------------------------------------
+# launch_research_agent with model parameter
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# parse_log_status
+# ---------------------------------------------------------------------------
+
+
+class TestParseLogStatus:
+    """Tests for parse_log_status."""
+
+    def test_extracts_result_from_stream_json(self, tmp_path: Path) -> None:
+        """Extracts the result field from a stream-json result line."""
+        from utils.research_agent import parse_log_status
+
+        log = tmp_path / "agent.log"
+        log.write_text(
+            '{"type":"system","subtype":"init","cwd":"/tmp"}\n'
+            '{"type":"result","subtype":"success","result":"API Error: Repeated 529 Overloaded errors"}\n'
+        )
+        assert parse_log_status(log) == "API Error: Repeated 529 Overloaded errors"
+
+    def test_returns_empty_for_missing_file(self, tmp_path: Path) -> None:
+        """Returns empty string when log file doesn't exist."""
+        from utils.research_agent import parse_log_status
+
+        assert parse_log_status(tmp_path / "missing.log") == ""
+
+    def test_returns_empty_for_empty_file(self, tmp_path: Path) -> None:
+        """Returns empty string for empty log file."""
+        from utils.research_agent import parse_log_status
+
+        log = tmp_path / "agent.log"
+        log.write_text("")
+        assert parse_log_status(log) == ""
+
+    def test_fallback_to_last_line_when_no_result(self, tmp_path: Path) -> None:
+        """Falls back to last non-empty line when no result JSON found."""
+        from utils.research_agent import parse_log_status
+
+        log = tmp_path / "agent.log"
+        log.write_text("some plain text log\nfinal line\n")
+        assert parse_log_status(log) == "final line"
+
+
+# ---------------------------------------------------------------------------
+# launch_research_agent with model parameter
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchWithModelFallback:
+    """Tests for launch_research_agent model parameter."""
+
+    def test_uses_custom_model_when_specified(self, tmp_path: Path) -> None:
+        """launch_research_agent passes custom model to CLI args."""
+        from utils.research_agent import launch_research_agent
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 12345
+
+        with (
+            patch("utils.research_agent.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "utils.research_agent.subprocess.Popen", return_value=mock_proc
+            ) as mock_popen,
+            patch("builtins.open", MagicMock()),
+        ):
+            proc, model_used = launch_research_agent(
+                _sample_tool(), tmp_path, model="claude-sonnet-4-6"
+            )
+
+        cmd = mock_popen.call_args[0][0]
+        assert "claude-sonnet-4-6" in cmd
+        assert model_used == "claude-sonnet-4-6"
+
+    def test_defaults_to_opus_when_no_model(self, tmp_path: Path) -> None:
+        """launch_research_agent defaults to Opus when model is None."""
+        from utils.research_agent import launch_research_agent
+
+        mock_proc = MagicMock(spec=subprocess.Popen)
+        mock_proc.pid = 12345
+
+        with (
+            patch("utils.research_agent.shutil.which", return_value="/usr/bin/claude"),
+            patch(
+                "utils.research_agent.subprocess.Popen", return_value=mock_proc
+            ) as mock_popen,
+            patch("builtins.open", MagicMock()),
+        ):
+            proc, model_used = launch_research_agent(_sample_tool(), tmp_path)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "claude-opus-4-6" in cmd
+        assert model_used == "claude-opus-4-6"

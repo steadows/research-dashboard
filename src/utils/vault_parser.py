@@ -84,6 +84,7 @@ def _parse_single_project(md_file: Path) -> dict[str, Any]:
             fm = yaml.safe_load(fm_match.group(1)) or {}
             project["status"] = fm.get("status", "")
             project["domain"] = fm.get("domain", "")
+            project["source_dir"] = fm.get("source_dir", "")
             tech = fm.get("tech", [])
             project["tech"] = list(tech) if isinstance(tech, list) else [tech]
         except yaml.YAMLError:

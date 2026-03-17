@@ -1,6 +1,6 @@
 # GSD Plan: Research Intelligence Dashboard
 
-> **Created:** 2026-03-14 | **Revised:** 2026-03-16 | **Stack:** Python 3.11 · Streamlit · Anthropic SDK · PyYAML
+> **Created:** 2026-03-14 | **Revised:** 2026-03-17 | **Stack:** Python 3.11 · Streamlit · Anthropic SDK · PyYAML
 > **Reference:** `Plans/Research Intelligence System.md` (Obsidian) — full design spec
 
 ---
@@ -18,6 +18,7 @@ After each session completes, start a **new** Claude Code session for the next o
 
 Sessions 3 and 4 can run concurrently (separate terminal windows) after Session 2.
 Sessions 8, 9, 10, and 11 run sequentially — each depends on the prior completing.
+Sessions 12 and 13 run sequentially after Session 11.
 
 ---
 
@@ -103,6 +104,8 @@ Session 1 (Setup + Design)
                                                                                           └── Session 9 (Methods Workbench — Schema Generalization)
                                                                                                     └── Session 10 (Research Agent)
                                                                                                               └── Session 11 (Sandbox + Vault Note)
+                                                                                                                        └── Session 12 (Instagram Ingester + Parser)
+                                                                                                                                  └── Session 13 (Agentic Hub Tab + Workbench Integration)
 ```
 
 ---
@@ -720,7 +723,7 @@ git commit -m "feat: methods workbench — namespaced keys, generalized schema, 
 
 ---
 
-## Session 10: Research Agent [~]
+## Session 10: Research Agent [x]
 
 Requires Session 9 complete.
 
@@ -810,7 +813,7 @@ Requires Session 9 complete.
 - [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: `research_agent.py`, `3_Workbench.py`) and security review (focus: subprocess injection — prompt as list arg, no shell=True with f-string, no user-controlled subprocess args, log files in controlled paths). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [10f] Commit [~]
+### [10f] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/manual assessment, review gate"
@@ -939,6 +942,284 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 
 ---
 
+## Session 12: Agentic Hub — Instagram Ingester + Parser [ ]
+
+Requires Session 11 complete.
+
+Adds Instagram video ingestion as a new data source. Videos are downloaded via
+`instaloader`, transcribed with `faster-whisper`, summarized by Claude Haiku, and
+written to the Obsidian vault as structured markdown. A companion parser reads the
+vault notes back into the dashboard data model. Sessions 12 and 13 implement the
+full pipeline end-to-end.
+
+### [12a] TDD — write ingester + parser tests first [ ]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol. Do NOT skip steps or improvise your own TDD process.
+- `tests/test_instagram_ingester.py`:
+  - `fetch_recent_posts` returns only video posts (skip images/carousels gracefully — no exception)
+  - `fetch_recent_posts` filters by `days` cutoff (posts older than `days` are excluded)
+  - `fetch_recent_posts` skips shortcodes already present in state file
+  - `fetch_recent_posts` logs a WARNING for skipped non-video posts (not an error)
+  - `transcribe_audio` returns a string; applies `_TERM_CORRECTIONS` (mock `WhisperModel`)
+  - `transcribe_audio` maps "Cloud Code" → "Claude Code" in output text
+  - `extract_keywords_and_summary` calls Haiku via `claude_client.py`; returns dict with `key_points`, `keywords`, `title` keys
+  - `extract_keywords_and_summary` includes known-project wiki-links (e.g. `[[Claude Code]]`) in keywords when project name appears in transcript
+  - `write_vault_note` creates file at `{vault_path}/Research/Instagram/{username}/YYYY-MM-DD.md`
+  - `write_vault_note` creates intermediate directories if missing
+  - `write_vault_note` returns Path to written file
+  - Written file contains YAML frontmatter with `tags`, `date`, `account`, `shortcode`, `source_url`
+  - Written file contains `## Caption`, `## Key Points`, `## Keywords`, `## Transcript` sections
+  - `run_ingestion` orchestrates full pipeline and returns list of written Paths
+  - State file write is atomic (mock `os.replace`; verify temp file used)
+  - `run_ingestion` records each shortcode in state file after successful write
+  - `run_ingestion` skips post and logs WARNING if transcription raises (never propagates exception)
+- `tests/test_instagram_parser.py`:
+  - `parse_instagram_posts` returns empty list when `Research/Instagram/` does not exist
+  - `parse_instagram_posts` parses YAML frontmatter: `account`, `date`, `shortcode`, `source_url`
+  - `parse_instagram_posts` parses `## Key Points` bullets into `key_points` list
+  - `parse_instagram_posts` parses `## Keywords` line into `keywords` list (strips `[[` / `]]`)
+  - `parse_instagram_posts` captures `## Caption` and `## Transcript` as plain strings
+  - `parse_instagram_posts` sets `source_type = "instagram"` on every returned dict
+  - `parse_instagram_posts` filters by `accounts` when provided (ignores other accounts)
+  - `parse_instagram_posts` tolerates a malformed file without raising (logs WARNING, skips)
+  - Round-trip: `write_vault_note` output → `parse_instagram_posts` → fields match original inputs
+- [ ] **Verify RED**: `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py -v` — ALL tests FAIL (modules not yet created)
+
+### [12b] src/utils/instagram_ingester.py [ ]
+- **MANDATORY**: Use the Read tool to read `src/utils/status_tracker.py` to reuse the atomic write pattern (tempfile + `os.replace`) for state file writes.
+- Imports: `instaloader`, `faster_whisper.WhisperModel`, `claude_client` (for Haiku calls), `pathlib.Path`, `json`, `logging`, `datetime`
+- **Term corrections** (hardcoded constant, not user-configurable):
+  ```python
+  _TERM_CORRECTIONS: dict[str, str] = {
+      "Cloud Code": "Claude Code",
+      "Cloud Agents": "Claude Agents",
+      "Cloud Agent": "Claude Agent",
+      "Clod": "Claude",
+  }
+  ```
+- `_DEFAULT_STATE_FILE = Path.home() / ".research-dashboard" / "instagram_state.json"`
+- `_WHISPER_MODEL = "base"` — initialize lazily on first call (module-level singleton via `functools.lru_cache(maxsize=1)`)
+- Public API:
+  ```python
+  def fetch_recent_posts(
+      username: str,
+      days: int = 14,
+      state_file: Path = _DEFAULT_STATE_FILE,
+  ) -> list[dict]
+
+  def transcribe_audio(video_path: Path) -> str
+
+  def extract_keywords_and_summary(
+      transcript: str,
+      caption: str,
+      known_projects: list[str],
+  ) -> dict
+
+  def write_vault_note(
+      post: dict,
+      transcript: str,
+      extracted: dict,
+      vault_path: Path,
+  ) -> Path
+
+  def run_ingestion(
+      username: str,
+      vault_path: Path,
+      days: int = 14,
+      state_file: Path = _DEFAULT_STATE_FILE,
+  ) -> list[Path]
+  ```
+- **`fetch_recent_posts`**:
+  - Load state from `state_file` (empty dict if missing)
+  - Use `instaloader.Instaloader()` + `Profile.from_username()` to iterate posts
+  - Apply 2–3s `time.sleep()` delay between each download to avoid rate limiting
+  - Skip post if `post.shortcode` already in state
+  - Skip post if `not post.is_video` — log `WARNING: Skipping non-video post {shortcode}` and continue
+  - Skip post if `post.date_utc < (datetime.utcnow() - timedelta(days=days))`
+  - Return list of dicts: `{shortcode, url: post.video_url, caption: post.caption, date: post.date_utc.date().isoformat(), username}`
+- **`transcribe_audio`**:
+  - Initialize `WhisperModel("base", device="cpu", compute_type="int8")` via lazy singleton
+  - Call `model.transcribe(str(video_path))`
+  - Join all segment texts into a single string
+  - Apply `_TERM_CORRECTIONS` via `str.replace()` for each entry (exact string match, case-sensitive)
+  - Return corrected transcript string
+- **`extract_keywords_and_summary`**:
+  - Build a Haiku prompt asking for: `title` (≤10 words), `key_points` (3–5 bullet strings), `keywords` (project wiki-links + general terms)
+  - Keyword wiki-link rule: if a known project name appears verbatim in `transcript` or `caption`, include it as `[[Project Name]]`
+  - Call `claude_client.call_haiku(prompt)` (or equivalent existing client function — reuse, do not create a new API path)
+  - Parse JSON response; return `{"title": str, "key_points": list[str], "keywords": list[str]}`
+  - On parse failure: log WARNING, return safe defaults (`title=username`, `key_points=[]`, `keywords=[]`)
+- **`write_vault_note`**:
+  - Output path: `{vault_path}/Research/Instagram/{post["username"]}/{post["date"]}.md`
+  - `mkdir(parents=True, exist_ok=True)` before writing
+  - YAML frontmatter: `tags`, `date`, `account`, `shortcode`, `source_url`
+  - Body sections: `## Caption`, `## Key Points` (bulleted), `## Keywords` (comma-separated wiki-links on one line), `## Transcript`
+  - Write atomically: write to temp file in same directory, then `os.replace()`
+  - Return `Path` to written file
+- **`run_ingestion`**:
+  - For each post from `fetch_recent_posts`: download video, transcribe, extract, write note
+  - On any per-post exception: log `WARNING: Failed to ingest {shortcode}: {exc}`, continue (never propagates)
+  - After successful `write_vault_note`: add `{shortcode: {"ingested_at": ISO, "note_path": str(path)}}` to state dict
+  - Write updated state atomically at end (not per-post — batch write)
+  - Return list of successfully written Paths
+- Module-level logger: `logger = logging.getLogger(__name__)`
+- `pathlib.Path` throughout; no `os.path`
+
+### [12c] src/utils/instagram_parser.py [ ]
+- **MANDATORY**: Use the Read tool to read `src/utils/parser_helpers.py` to reuse `split_h2_sections()` and `parse_fields()`. Do not duplicate section-splitting logic.
+- Cached with `@st.cache_data(ttl=3600)` — document in docstring that callers should not wrap again.
+- Public API:
+  ```python
+  def parse_instagram_posts(
+      vault_path: Path,
+      accounts: list[str] | None = None,
+  ) -> list[dict]
+  ```
+- Glob `Research/Instagram/**/*.md` (recursive) under `vault_path`
+- For each file:
+  - Parse YAML frontmatter with `yaml.safe_load()` — extract `account`, `date`, `shortcode`, `source_url`, `tags`
+  - Use `split_h2_sections()` to extract section bodies: `Caption`, `Key Points`, `Keywords`, `Transcript`
+  - Parse `Key Points` lines: strip leading `- ` → `list[str]`
+  - Parse `Keywords` line: split on `,`, strip whitespace and `[[` / `]]` → `list[str]`
+  - Build return dict:
+    ```python
+    {
+        "name": extracted["title"] or file.stem,
+        "account": frontmatter["account"],
+        "date": frontmatter["date"],
+        "source_url": frontmatter.get("source_url", ""),
+        "shortcode": frontmatter.get("shortcode", ""),
+        "key_points": list[str],
+        "keywords": list[str],
+        "caption": str,
+        "transcript": str,
+        "source_type": "instagram",
+    }
+    ```
+  - On malformed file (missing frontmatter, YAML parse error): log `WARNING: Skipping malformed instagram note {path}`, continue
+- Filter by `accounts` list if provided (match on `account` field, case-insensitive)
+- Sort by `date` descending
+- Module-level logger: `logger = logging.getLogger(__name__)`
+
+### [12d] Update requirements.txt [ ]
+- Add `instaloader` and `faster-whisper` entries (verify exact PyPI package names match official registry)
+- Do NOT add `ffmpeg` — already in conda env, not a pip dependency
+
+### [12e] Verify GREEN [ ]
+- [ ] Run `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py -v` — ALL tests PASS
+- [ ] Run round-trip test: `write_vault_note` output → `parse_instagram_posts` → fields match
+- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — `instagram_ingester` ≥ 80%, `instagram_parser` ≥ 80%, utils total ≥ 80%
+
+### [12f] Quality Gate [ ]
+
+**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean (`ruff check src/ tests/`), format clean (`ruff format --check`), full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `instagram_ingester.py` (atomic state write, rate-limit delay, per-post exception isolation, no shell=True), `instagram_parser.py` (cache decorator, immutable returns, malformed-file tolerance). Security review focus: vault write path stays within `vault_path` boundary (verify with `.resolve().is_relative_to()`), no user-controlled paths in subprocess or shell calls, `yaml.safe_load()` used. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
+
+### [12g] Commit [ ]
+```bash
+git add src/ tests/ requirements.txt GSD_PLAN.md
+git commit -m "feat: instagram ingestion pipeline — instaloader fetch, whisper transcription, haiku extraction, vault writer, parser"
+```
+
+---
+
+## Session 13: Agentic Hub Tab + Workbench Integration [ ]
+
+Requires Session 12 complete.
+
+Surfaces ingested Instagram posts in a new "Agentic Hub" tab on the Dashboard, with
+account filtering and per-card actions. Instagram posts flow into the existing Workbench
+via `add_to_workbench` with `source_type="instagram"`. The research agent prompt is
+extended to include the post transcript as additional context.
+
+### [13a] TDD — write Agentic Hub tab + workbench integration tests first [ ]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- `tests/test_agentic_hub.py`:
+  - `render_agentic_hub_tab` renders empty state when `parse_instagram_posts` returns `[]`
+  - Account filter shows "All" option plus one pill per unique account in posts list
+  - "All" filter selected by default; posts list is unfiltered
+  - Selecting a specific account pill filters post cards to that account only
+  - Each post card renders account badge, date, title, key points, keyword chips
+  - `📝 Summarize` button disabled when inline summary already in session state for that post
+  - `🔬 Workbench` button calls `add_to_workbench` with `source_type="instagram"` on click
+  - `🔬 Workbench` button disabled when post `shortcode` already in workbench
+  - All vault-sourced strings (title, caption, key points) passed through `safe_html()` before `unsafe_allow_html=True`
+- `tests/test_instagram_workbench.py`:
+  - `add_to_workbench` with instagram item stores `source_type = "instagram"` in entry
+  - `add_to_workbench` uses `make_item_key("instagram", shortcode)` as workbench key
+  - `update_workbench_item` for instagram entry preserves `transcript` field
+  - Workbench page renders instagram entry with purple source badge (same as methods)
+  - `_build_prompt` for research agent includes `<context>` block with transcript when `transcript` key present in item dict
+- [ ] **Verify RED**: `pytest tests/test_agentic_hub.py tests/test_instagram_workbench.py -v` — ALL tests FAIL
+
+### [13b] Dashboard — add "Agentic Hub" tab [ ]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/using-streamlit-layouts/SKILL.md`. Apply tab and column patterns.
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply key-only widget patterns.
+- In `src/pages/1_Dashboard.py`:
+  - Extend `st.tabs([...])` to include `"🤖 Agentic Hub"` as the sixth tab
+  - Session state key: `dashboard__agentic_hub_account_filter` (default `"All"`)
+  - Call `parse_instagram_posts(vault_path)` wrapped with `@st.cache_data(ttl=3600)` on the call site (consistent with other parser calls in this file)
+  - Render empty state (`st.info(...)`) when posts list is empty — message: `"No Instagram posts ingested yet. Run the ingester for an account to populate this tab."`
+
+### [13c] Account filter pills [ ]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/choosing-streamlit-selection-widgets/SKILL.md`. Apply pill/button filter patterns consistent with existing Dashboard filter UI.
+- Build unique account list from posts: `sorted({p["account"] for p in posts})`
+- Render as pill buttons: `["All"] + sorted_accounts`
+- Active pill highlighted with amber border (consistent with existing filter pills in Tools Radar tab)
+- On click: update `dashboard__agentic_hub_account_filter` → `st.rerun()`
+- Filter posts list before rendering cards
+
+### [13d] Post cards [ ]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply surface-card HTML and badge patterns consistent with existing tool/blog cards.
+- Per post card (surface-card div):
+  - Header row: account badge (blue `#1E40AF`), date string (right-aligned)
+  - Title: bold, `safe_html(post["name"])`
+  - Key points: bulleted `<ul>` — each bullet via `safe_html(point)`
+  - Keyword chips: amber chips for each keyword (same chip CSS as Tools Radar project tags)
+  - Action row (`st.columns([1, 1])`):
+    - `📝 Summarize` — Haiku inline summary. On click: call `claude_client` Haiku with transcript + key points. Store result in `st.session_state[f"dashboard__agentic_hub_summary_{post['shortcode']}"]`. Disabled while result already in session state. Show result inline below card on subsequent render.
+    - `🔬 Workbench` — disabled when `make_item_key("instagram", post["shortcode"])` already in `get_workbench_items()`. On click: `add_to_workbench(post, previous_status="new")`, `st.rerun()`
+- All vault-sourced strings use `safe_html()` before `unsafe_allow_html=True`
+
+### [13e] Workbench — instagram entry rendering [ ]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply badge patterns.
+- In `src/pages/3_Workbench.py`:
+  - Extend source-type badge colors: `"instagram"` → indigo `#6366F1` (distinct from method purple and tool green)
+  - For instagram entries: show `caption` field (truncated to 200 chars) as the synthesis line instead of LLM summary
+  - `🔍 Research` button: disabled for instagram entries (`source_type == "instagram"`) — research pipeline is tool/method-specific for now. Document with `st.caption("Research agent not yet wired for instagram posts.")` beneath the disabled button.
+
+### [13f] Research agent — transcript context injection [ ]
+- In `src/utils/research_agent.py`:
+  - In `_build_prompt(item: dict) -> str` (or wherever the COSTAR prompt is assembled):
+    - If `item.get("transcript")` is non-empty: append a `<context>` block containing the first 4000 chars of the transcript after the existing `<context>` block content
+    - Log at DEBUG: `"Injecting transcript context: {len(transcript)} chars"`
+  - No changes to subprocess invocation — only the prompt string changes
+  - Ensure existing tool-path tests still pass (transcript field absent → no change)
+
+### [13g] Verify GREEN [ ]
+- [ ] Run `pytest tests/test_agentic_hub.py tests/test_instagram_workbench.py -v` — ALL tests PASS
+- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [ ] `ruff check src/ tests/` — no errors
+- [ ] `ruff format --check src/ tests/` — no formatting issues
+
+### [13h] Quality Gate [ ]
+
+**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `1_Dashboard.py` Agentic Hub tab (XSS via `safe_html()`, filter state namespacing, no API call on render path), `3_Workbench.py` instagram entry rendering (no KeyError on missing transcript/caption), `research_agent.py` transcript injection (truncation at 4000 chars, no prompt injection from vault content). Security review focus: transcript injected into prompt is bounded (4000 chars), vault strings escaped before HTML rendering, no user-controlled URLs passed to subprocess. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 12–13 for extractable patterns → save to `~/.claude/skills/learned/`.
+
+### [13i] Commit [ ]
+```bash
+git add src/ tests/ GSD_PLAN.md
+git commit -m "feat: agentic hub tab — instagram post cards, account filter, workbench integration, transcript context injection"
+```
+
+---
+
 ## Decisions Log
 
 | Decision | Choice | Rationale |
@@ -965,6 +1246,16 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | Full text cap | 30K chars (~7.5K tokens) | Keeps Sonnet prompts bounded; semantic section extraction preferred |
 | Cache versioning | Bump suffix on every prompt enrichment change | Prevents stale thin-context outputs from masking enriched prompt results |
 | Paper fetch API | Single `fetch_paper_context() -> PaperContext` | One Semantic Scholar call, one cache write, typed return — replaces separate helpers |
+| Instagram state file | `~/.research-dashboard/instagram_state.json` (separate from `workbench.json`) | Ingestion state is append-only and keyed by shortcode; isolating it avoids schema coupling with workbench lifecycle data |
+| Instagram video source | `post.video_url` (audio-only download via instaloader) | Avoids storing full video files locally; Whisper transcribes from audio stream |
+| Whisper model size | `base` with `device="cpu"`, `compute_type="int8"` | Balances transcription quality vs. local CPU cost; no GPU required on dev machine |
+| Term corrections | Hardcoded `_TERM_CORRECTIONS` dict in ingester | Whisper mishears AI product names predictably; small static dict is sufficient, no ML overhead |
+| Rate limiting | 2–3s `time.sleep()` between instaloader downloads | Instagram private API has no official rate limit docs; conservative delay avoids 429s |
+| Instagram workbench key | `make_item_key("instagram", shortcode)` | Shortcode is globally unique per post; name-based keys would collide on re-titles |
+| Instagram source badge | Indigo `#6366F1` | Visually distinct from method purple (`#8B5CF6`) and tool green (`#10B981`) in Workbench |
+| Instagram research button | Disabled in Session 13 | Research agent COSTAR prompt is tool/method-shaped; instagram posts need a different prompt structure — deferred |
+| Transcript context in research prompt | First 4000 chars injected into `<context>` block | Keeps prompt bounded; 4000 chars ≈ 1000 tokens, well within Opus context window |
+| Agentic Hub tab position | Sixth tab in Dashboard | Ordered by data maturity: established feeds first, new ingestion sources appended |
 
 ---
 
@@ -975,7 +1266,9 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 │                         Streamlit App                            │
 │                                                                  │
 │  src/Home.py ──→ 1_Dashboard.py  2_Project_Cockpit.py            │
-│                        │  │              │                       │
+│                        │  │  │           │                       │
+│                        │  │  └(Agentic   │                       │
+│                        │  │    Hub tab)  │                       │
 │                        │  └──(Workbench)─┤                       │
 │                        ↓                 ↓                       │
 │                  3_Workbench.py ←────────┘                       │
@@ -988,19 +1281,22 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 │  │ cockpit_components   parser_helpers   page_helpers    │       │
 │  │ paper_fetcher   workbench_tracker                     │       │
 │  │ research_agent   vault_writer                         │       │
+│  │ instagram_ingester   instagram_parser                 │       │
 │  └─────────────────────────┬─────────────────────────────┘       │
 └────────────────────────────┼─────────────────────────────────────┘
                              │
-         ┌───────────────────┼──────────────────────────┐
-         │                   │                │          │
+         ┌───────────────────┼───────────────────────────────────┐
+         │                   │                │          │        │
  Obsidian Vault       status.json      Anthropic API   ~/research-workbench/
  (OBSIDIAN_VAULT_PATH)  workbench.json  (claude -p     {tool-slug}/
-                        paper-cache/    subprocess)    research.md
-                       (~/.research-                   research.html
-                        dashboard/)
-                                                       Dockerfile
-                                                       experiment.py
-                                                       run.sh
+  Research/Instagram/   paper-cache/    subprocess)    research.md
+  {username}/           instagram_      (Haiku inline  research.html
+  YYYY-MM-DD.md        state.json       + Opus agent)  Dockerfile
+                       (~/.research-                   experiment.py
+                        dashboard/)                    run.sh
+                                        instaloader +
+                                        faster-whisper
+                                        (local CPU)
 ```
 
 ---
@@ -1039,6 +1335,16 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | `src/utils/vault_writer.py` | 11 | Write sandbox vault notes |
 | `tests/test_vault_writer.py` | 11 | Vault writer unit tests |
 | `tests/test_workbench_integration.py` | 11 | Round-trip workbench pipeline integration tests |
+| `src/utils/instagram_ingester.py` | 12 | Instagram video fetch, Whisper transcription, Haiku extraction, vault note writer, state file |
+| `src/utils/instagram_parser.py` | 12 | Parse `Research/Instagram/**/*.md` vault notes into structured dicts |
+| `tests/test_instagram_ingester.py` | 12 | Instagram ingester unit tests — fetch, transcribe, extract, write, state management |
+| `tests/test_instagram_parser.py` | 12 | Instagram parser unit tests — frontmatter, sections, filter, round-trip |
+| `requirements.txt` | 12 | `instaloader`, `faster-whisper` added |
+| `src/pages/1_Dashboard.py` | 13 | Agentic Hub tab — account filter pills, post cards, Summarize + Workbench buttons |
+| `src/pages/3_Workbench.py` | 13 | Instagram entry rendering — indigo badge, caption synthesis line, disabled Research button |
+| `src/utils/research_agent.py` | 13 | Transcript context injection into COSTAR `<context>` block |
+| `tests/test_agentic_hub.py` | 13 | Agentic Hub tab render tests — filter, card content, button states, XSS |
+| `tests/test_instagram_workbench.py` | 13 | Instagram workbench integration — key format, transcript field, Workbench page rendering |
 
 ---
 
@@ -1060,3 +1366,11 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 | Long-running agent blocks Streamlit | High | Low | Subprocess model + log tail polling; page renders freely between polls |
 | workbench.json concurrent write collision | Low | Low | Same atomic write pattern as status.json; single-user local app, risk acceptable |
 | Vault note directory missing | Low | Low | `mkdir(parents=True, exist_ok=True)` in `write_sandbox_note` |
+| Instagram rate limiting (429) | Medium | Medium | 2–3s delay between downloads; `run_ingestion` skips failed posts with WARNING (never aborts full run) |
+| instaloader private API breaks | Medium | High | Document: instaloader reverse-engineers Instagram's private web API — Instagram changes may break fetching without notice. Pin `instaloader` version in `requirements.txt`; monitor changelog. |
+| Whisper mishears proper nouns | High | Low | `_TERM_CORRECTIONS` dict applied post-transcription; expand dict as new misheard terms are found |
+| Posts with no video (images/carousels) | High | Low | `fetch_recent_posts` checks `post.is_video`; skips with WARNING log, never raises |
+| Large video files slow transcription | Medium | Medium | Whisper `base` model on CPU; transcription time scales with video length. Document: expect 2–5× real-time on M-series Mac. Users should ingest in background (not Streamlit render path). |
+| instagram_state.json concurrent write | Low | Low | Atomic write (same `tempfile + os.replace` pattern as status.json); single-user local app, risk acceptable |
+| Transcript injected into research prompt exceeds context | Low | Low | Hard cap at 4000 chars in `_build_prompt`; logged at DEBUG |
+| Vault write path traversal (username field) | Low | High | Validate `username` contains only alphanumeric + `.` + `_` + `-` before using in path construction; reject with ValueError on unexpected chars |

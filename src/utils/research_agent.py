@@ -13,6 +13,7 @@ Public API:
 """
 
 import html as html_module
+import json
 import logging
 import os
 import shutil
@@ -25,7 +26,28 @@ import markdown
 logger = logging.getLogger(__name__)
 
 _OPUS_MODEL = "claude-opus-4-6"
+_SONNET_MODEL = "claude-sonnet-4-6"
+_MODEL_FALLBACK_CHAIN = [_OPUS_MODEL, _SONNET_MODEL]
+_MAX_RETRIES = 2
 _WORKBENCH_ROOT = Path.home() / "research-workbench"
+
+# Tools the research agent is allowed to use without interactive permission prompts.
+# Covers: web search, docs lookup, file I/O for writing research.md.
+_ALLOWED_TOOLS = [
+    "WebSearch",
+    "WebFetch",
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Glob",
+    "Grep",
+    "mcp__exa-web-search__web_search_exa",
+    "mcp__exa-web-search__get_code_context_exa",
+    "mcp__context7__resolve-library-id",
+    "mcp__context7__query-docs",
+    "mcp__fetch__fetch",
+]
 
 # ---------------------------------------------------------------------------
 # COSTAR research prompt template
@@ -37,7 +59,7 @@ Tool name: {name}
 Category: {category}
 Source: {source}
 Description: {description}
-</context>
+{project_context}</context>
 
 <objective>
 Research this tool thoroughly. Use Exa to search for documentation, GitHub \
@@ -45,7 +67,7 @@ repositories, and real-world usage examples. Use context7 to pull official \
 API documentation where available. Assess whether the tool can be evaluated \
 programmatically (headless, via code) or requires manual hands-on evaluation. \
 Design a minimal, focused experiment that could be run within a sandbox \
-environment.
+environment.{project_objective}
 </objective>
 
 <style>
@@ -99,11 +121,32 @@ def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
         or tool.get("why it matters")
         or ""
     )
+
+    # Build project context block if a project directory was provided
+    project_dir = tool.get("project_dir", "")
+    project_name = tool.get("project_name", "")
+    if project_dir:
+        project_context = (
+            f"\nTarget project: {project_name}\n"
+            f"Project directory: {project_dir}\n"
+        )
+        project_objective = (
+            " Also explore the project directory to understand the existing "
+            "codebase — look at its structure, dependencies, and patterns. "
+            "Add a ## Integration Notes section after Experiment Design with "
+            "concrete suggestions for how this tool fits into the project."
+        )
+    else:
+        project_context = ""
+        project_objective = ""
+
     return _COSTAR_PROMPT_TEMPLATE.format(
         name=tool.get("name", "Unknown"),
         category=tool.get("category", "Unknown"),
         source=tool.get("source", "Unknown"),
         description=description,
+        project_context=project_context,
+        project_objective=project_objective,
         output_path=str(output_dir / "research.md"),
     )
 
@@ -113,8 +156,12 @@ def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.Popen:
-    """Launch Opus research agent as a subprocess.
+def launch_research_agent(
+    tool: dict[str, Any],
+    output_dir: Path,
+    model: str | None = None,
+) -> tuple[subprocess.Popen, str]:
+    """Launch research agent as a subprocess.
 
     The agent writes ``research.md`` to ``output_dir``. Stream-JSON output
     and stderr are redirected to ``{output_dir}/agent.log`` via a file handle.
@@ -122,9 +169,11 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
     Args:
         tool: Tool dict (from tools_parser) to research.
         output_dir: Directory to write research.md and agent.log.
+        model: Model ID to use. Defaults to Opus.
 
     Returns:
-        subprocess.Popen handle. Caller should save .pid to workbench entry.
+        Tuple of (subprocess.Popen handle, model ID used).
+        Caller should save .pid and model to workbench entry.
 
     Raises:
         FileNotFoundError: If the ``claude`` CLI is not found in PATH.
@@ -133,6 +182,7 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
     if claude_bin is None:
         raise FileNotFoundError("claude CLI not found in PATH")
 
+    resolved_model = model or _OPUS_MODEL
     output_dir.mkdir(parents=True, exist_ok=True)
 
     prompt = _build_prompt(tool, output_dir)
@@ -143,11 +193,22 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
         "-p",
         prompt,
         "--model",
-        _OPUS_MODEL,
+        resolved_model,
+        "--fallback-model",
+        _SONNET_MODEL,
+        "--allowedTools",
+        ",".join(_ALLOWED_TOOLS),
         "--output-format",
         "stream-json",
         "--verbose",
     ]
+
+    # Set cwd to project directory if available, so the agent can explore it
+    project_dir = tool.get("project_dir", "")
+    cwd = Path(project_dir) if project_dir else None
+    if cwd and not cwd.is_dir():
+        logger.warning("project_dir '%s' not found, ignoring", cwd)
+        cwd = None
 
     log_fh = open(log_path, "w", encoding="utf-8")  # noqa: WPS515
     try:
@@ -155,6 +216,7 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
             cmd,
             stdout=log_fh,
             stderr=log_fh,
+            cwd=cwd,
             shell=False,
         )
     finally:
@@ -162,16 +224,182 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
         log_fh.close()
 
     logger.info(
-        "Launched research agent for '%s' (pid=%d), log=%s",
+        "Launched research agent for '%s' (pid=%d, model=%s), log=%s",
         tool.get("name"),
         proc.pid,
+        resolved_model,
         log_path,
     )
-    return proc
+    return proc, resolved_model
+
+
+def get_fallback_model(current_model: str | None) -> str | None:
+    """Return the next model in the fallback chain, or None if exhausted.
+
+    Args:
+        current_model: The model that just failed.
+
+    Returns:
+        Next model ID to try, or None if no fallback available.
+    """
+    current = current_model or _OPUS_MODEL
+    try:
+        idx = _MODEL_FALLBACK_CHAIN.index(current)
+    except ValueError:
+        return None
+    next_idx = idx + 1
+    if next_idx < len(_MODEL_FALLBACK_CHAIN):
+        return _MODEL_FALLBACK_CHAIN[next_idx]
+    return None
+
+
+def is_retryable_failure(log_file: Path) -> bool:
+    """Check whether a research agent failed due to a transient API error.
+
+    Scans the last 20 lines of the log for overload (529), internal
+    server error (500), or other transient indicators.
+
+    Args:
+        log_file: Path to the agent.log file.
+
+    Returns:
+        True if the failure appears transient and worth retrying.
+    """
+    tail = tail_log(log_file, n=20)
+    return any(marker in tail for marker in ("529", "Overloaded", "500", "Internal server error"))
+
+
+# Keep old name as alias for backward compatibility in tests
+is_overload_failure = is_retryable_failure
+
+
+def parse_agent_activity(log_file: Path, max_items: int = 8) -> list[str]:
+    """Extract recent tool-use activity from a stream-json agent log.
+
+    Parses the log for ``tool_use`` content blocks in assistant messages
+    and returns human-readable descriptions of the most recent tool calls.
+
+    Args:
+        log_file: Path to the agent.log file.
+        max_items: Maximum number of activity items to return.
+
+    Returns:
+        List of human-readable activity strings (most recent last).
+    """
+    if not log_file.is_file():
+        return []
+
+    activities: list[str] = []
+
+    for line in log_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        if obj.get("type") != "assistant":
+            continue
+
+        msg = obj.get("message", {})
+        for block in msg.get("content", []):
+            if block.get("type") != "tool_use":
+                continue
+            label = _describe_tool_call(block)
+            if label:
+                activities.append(label)
+
+    return activities[-max_items:]
+
+
+def _describe_tool_call(block: dict[str, Any]) -> str:
+    """Convert a tool_use block into a short human-readable description.
+
+    Args:
+        block: A tool_use content block from stream-json.
+
+    Returns:
+        Short description string, or empty string if unrecognizable.
+    """
+    name = block.get("name", "")
+    inp = block.get("input", {})
+
+    if name == "Read":
+        path = inp.get("file_path", "")
+        return f"Reading {Path(path).name}" if path else "Reading file"
+    if name == "Write":
+        path = inp.get("file_path", "")
+        return f"Writing {Path(path).name}" if path else "Writing file"
+    if name == "Glob":
+        return f"Searching files: {inp.get('pattern', '')}"
+    if name == "Grep":
+        return f"Searching code: {inp.get('pattern', '')[:40]}"
+    if name == "Agent":
+        return f"Agent: {inp.get('description', '')[:50]}"
+    if "fetch" in name.lower():
+        url = inp.get("url", "")
+        if url:
+            # Show domain + first path segment
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            short = parsed.netloc + parsed.path[:30]
+            return f"Fetching {short}"
+        return "Fetching URL"
+    if "search" in name.lower():
+        query = inp.get("query", "")
+        return f"Searching: {query[:45]}" if query else "Web search"
+    if "context7" in name:
+        return f"Docs lookup: {inp.get('libraryName', inp.get('topic', ''))[:40]}"
+
+    return name if name else ""
+
+
+def parse_log_status(log_file: Path) -> str:
+    """Extract a human-readable status line from a stream-json agent log.
+
+    Scans the log for the ``result`` JSON line and returns its ``result``
+    field. Falls back to the last non-empty line if no result line is found.
+
+    Args:
+        log_file: Path to the agent.log file.
+
+    Returns:
+        Human-readable status string, or empty string if log is missing.
+    """
+    if not log_file.is_file():
+        return ""
+
+    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    # Walk backwards to find the result line
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if obj.get("type") == "result":
+            return obj.get("result", "Unknown result")
+
+    # Fallback: return last non-empty line (truncated)
+    for line in reversed(lines):
+        stripped = line.strip()
+        if stripped:
+            return stripped[:200]
+    return ""
 
 
 def is_agent_running(pid: int) -> bool:
     """Check whether a process is still running.
+
+    Uses ``os.waitpid`` with ``WNOHANG`` to reap zombie child processes
+    (which ``os.kill(pid, 0)`` alone cannot distinguish from live processes).
+    Falls back to signal-based check for non-child processes.
 
     Args:
         pid: Process ID to check.
@@ -179,6 +407,18 @@ def is_agent_running(pid: int) -> bool:
     Returns:
         True if the process exists and is running, False otherwise.
     """
+    # Try to reap the child — handles zombie (defunct) processes
+    try:
+        waited_pid, status = os.waitpid(pid, os.WNOHANG)
+        if waited_pid != 0:
+            # Child was reaped — it has exited
+            return False
+        # waitpid returned 0 — child is still running
+        return True
+    except ChildProcessError:
+        # Not our child — fall back to signal check
+        pass
+
     try:
         os.kill(pid, 0)
         return True

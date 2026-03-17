@@ -14,9 +14,14 @@ import streamlit as st
 
 from utils.page_helpers import get_category_color, safe_html
 from utils.research_agent import (
+    _MAX_RETRIES,
     _WORKBENCH_ROOT,
+    get_fallback_model,
     is_agent_running,
+    is_retryable_failure,
     launch_research_agent,
+    parse_agent_activity,
+    parse_log_status,
     parse_research_output,
     render_research_html,
     tail_log,
@@ -65,12 +70,30 @@ def _get_source_type_color(source_type: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _render_sidebar() -> None:
-    """Render sidebar with refresh button."""
+def _render_sidebar(items: dict[str, dict[str, Any]] | None = None) -> None:
+    """Render sidebar with refresh button and workbench summary.
+
+    Args:
+        items: Workbench items dict. If provided, renders status summary.
+    """
     with st.sidebar:
         if st.button("🔄 Refresh", key="workbench__refresh", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
+
+        if items is not None:
+            st.divider()
+            st.caption(f"**{len(items)}** item{'s' if len(items) != 1 else ''}")
+            status_counts: dict[str, int] = {}
+            for entry in items.values():
+                s = entry.get("status", "unknown")
+                status_counts[s] = status_counts.get(s, 0) + 1
+            for s, count in sorted(status_counts.items()):
+                color = _get_status_color(s)
+                st.markdown(
+                    f'<span style="color:{color}">{safe_html(s)}</span>: {count}',
+                    unsafe_allow_html=True,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -127,13 +150,15 @@ def _handle_research_click(wb_key: str, entry: dict[str, Any]) -> None:
 
     logger.info("UI: Research clicked for '%s'", item.get("name"))
     try:
-        proc = launch_research_agent(item, output_dir)
+        proc, model_used = launch_research_agent(item, output_dir)
         update_workbench_item(
             wb_key,
             {
                 "status": "researching",
                 "pid": proc.pid,
                 "log_file": str(log_file),
+                "retry_count": 0,
+                "model": model_used,
             },
         )
     except FileNotFoundError as exc:
@@ -159,36 +184,82 @@ def _poll_research_status(wb_key: str, entry: dict[str, Any]) -> None:
     # Agent finished — parse output and update
     output_dir = _get_output_dir(wb_key, entry)
     research_md = output_dir / "research.md"
+    log_file = output_dir / "agent.log"
     item = entry.get("item", {})
     tool_name = item.get("name", "")
+    retry_count = entry.get("retry_count", 0)
+    current_model = entry.get("model")
 
-    parsed = parse_research_output(research_md)
-    html_path = render_research_html(research_md, output_dir, tool_name=tool_name)
+    if not research_md.exists():
+        # Check if this was an overload failure we can retry
+        if is_retryable_failure(log_file) and retry_count < _MAX_RETRIES:
+            fallback = get_fallback_model(current_model)
+            next_model = fallback or current_model
+            retry_num = retry_count + 1
+            logger.warning(
+                "Research agent overloaded for '%s' (attempt %d/%d, model=%s). "
+                "Retrying with model=%s...",
+                tool_name,
+                retry_num,
+                _MAX_RETRIES,
+                current_model,
+                next_model,
+            )
+            try:
+                proc, model_used = launch_research_agent(
+                    item, output_dir, model=next_model
+                )
+                update_workbench_item(
+                    wb_key,
+                    {
+                        "status": "researching",
+                        "pid": proc.pid,
+                        "retry_count": retry_num,
+                        "model": model_used,
+                    },
+                )
+            except FileNotFoundError:
+                update_workbench_item(wb_key, {"status": "failed"})
+            st.rerun()
+            return
 
-    experiment_type = parsed.get("experiment_type")
-    new_status = "researched" if research_md.exists() else "failed"
-
-    if new_status == "failed":
-        log_tail = tail_log(output_dir / "agent.log", n=10)
+        # Non-retryable failure or retries exhausted
+        log_tail = tail_log(log_file, n=10)
         logger.warning(
-            "Research failed for '%s': research.md absent. Log tail:\n%s",
+            "Research failed for '%s': research.md absent (retries=%d). "
+            "Log tail:\n%s",
             tool_name,
+            retry_count,
             log_tail,
         )
+        update_workbench_item(
+            wb_key,
+            {"status": "failed", "experiment_type": None},
+        )
+        st.rerun()
+        return
+
+    # Success — parse and render
+    parsed = parse_research_output(research_md)
+    html_path = render_research_html(research_md, output_dir, tool_name=tool_name)
+    experiment_type = parsed.get("experiment_type")
 
     update_workbench_item(
         wb_key,
         {
-            "status": new_status,
+            "status": "researched",
             "experiment_type": experiment_type,
         },
     )
     logger.info(
-        "Research complete for '%s': status=%s experiment_type=%s html=%s",
+        "Research complete for '%s': status=%s experiment_type=%s html=%s "
+        "(attempts=%d, model=%s)",
         tool_name,
-        new_status,
+        "researched",
         experiment_type,
         html_path,
+        retry_count + 1,
+        current_model,
     )
     st.rerun()
 
@@ -310,11 +381,28 @@ def _render_researching_panel(wb_key: str, entry: dict[str, Any]) -> None:
     # Poll on each render — update state if agent finished
     _poll_research_status(wb_key, entry)
 
-    st.caption("🔬 Research agent running…")
+    model = entry.get("model", "unknown")
+    retry_count = entry.get("retry_count", 0)
+    retry_label = f" (retry {retry_count})" if retry_count > 0 else ""
+    st.caption(f"🔬 Research agent running on **{model}**{retry_label}…")
+
     if log_file:
-        tail = tail_log(log_file, n=20)
-        if tail:
-            st.code(tail, language=None)
+        activities = parse_agent_activity(log_file, max_items=8)
+        if activities:
+            # Show activity feed as a styled list
+            feed_html = "".join(
+                f'<div style="color:#9CA3AF;font-size:0.82rem;padding:2px 0">'
+                f'<span style="color:#3B82F6;margin-right:6px">▸</span>{safe_html(step)}</div>'
+                for step in activities
+            )
+            st.markdown(
+                f'<div style="background:#111827;border:1px solid #1F2937;'
+                f'border-radius:6px;padding:10px 14px;margin:8px 0">'
+                f'{feed_html}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Starting up…")
 
     if st.button("🔄 Refresh", key=f"workbench__refresh_log_{wb_key}"):
         st.rerun()
@@ -328,7 +416,7 @@ def _render_report_buttons(wb_key: str, research_html: Path, research_md: Path) 
         research_html: Path to the generated HTML report.
         research_md: Path to the research markdown file.
     """
-    col_open, col_inline = st.columns([1, 1])
+    col_open, col_inline, _spacer = st.columns([1, 1, 3])
     with col_open:
         if research_html.exists() and st.button(
             "📄 Open Full Report",
@@ -336,12 +424,12 @@ def _render_report_buttons(wb_key: str, research_html: Path, research_md: Path) 
         ):
             subprocess.Popen(["open", str(research_html)])  # noqa: S603 S607
 
-    with col_inline:
-        with st.expander("📊 View Inline"):
-            if research_md.exists():
-                st.markdown(research_md.read_text(encoding="utf-8"))
-            else:
-                st.caption("research.md not found.")
+    # Full-width inline report (outside columns)
+    with st.expander("📊 View Inline"):
+        if research_md.exists():
+            st.markdown(research_md.read_text(encoding="utf-8"))
+        else:
+            st.caption("research.md not found.")
 
 
 def _render_programmatic_gate(wb_key: str, reviewed: bool) -> None:
@@ -407,18 +495,31 @@ def _render_researched_panel(wb_key: str, entry: dict[str, Any]) -> None:
 
 
 def _render_failed_panel(wb_key: str, entry: dict[str, Any]) -> None:
-    """Render error state with last log lines.
+    """Render error state with parsed error message and retry button.
 
     Args:
         wb_key: Namespaced workbench key.
         entry: Workbench entry dict.
     """
-    st.error("Research agent failed.")
+    retry_count = entry.get("retry_count", 0)
+    model = entry.get("model", "unknown")
     log_file_str = entry.get("log_file")
-    if log_file_str:
-        tail = tail_log(Path(log_file_str), n=10)
-        if tail:
-            st.code(tail, language=None)
+    log_file = Path(log_file_str) if log_file_str else None
+
+    # Show parsed error message instead of raw JSON
+    error_msg = "Research agent failed."
+    if log_file:
+        status_line = parse_log_status(log_file)
+        if status_line:
+            error_msg = status_line
+
+    st.error(error_msg)
+    st.caption(f"Model: **{model}** · Attempts: **{retry_count + 1}**")
+
+    # Offer manual retry button
+    if st.button("🔁 Retry Research", key=f"workbench__retry_{wb_key}"):
+        _handle_research_click(wb_key, entry)
+        return
 
 
 def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
@@ -433,7 +534,7 @@ def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
     col_research, col_remove = st.columns([1, 1])
 
     with col_research:
-        research_disabled = status != "queued" or source_type == "method"
+        research_disabled = status not in ("queued", "failed")
         if st.button(
             "🔍 Research",
             key=f"workbench__research_{wb_key}",
@@ -484,31 +585,6 @@ def _extract_section(content: str, heading: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _render_parser_health(items: dict[str, dict[str, Any]]) -> None:
-    """Render parser health diagnostic panel at page bottom.
-
-    Args:
-        items: Workbench items dict (avoids redundant filesystem read).
-    """
-    with st.expander("🔧 Parser Health"):
-        st.caption(f"Workbench items: {len(items)}")
-
-        # Count by status
-        status_counts: dict[str, int] = {}
-        for entry in items.values():
-            s = entry.get("status", "unknown")
-            status_counts[s] = status_counts.get(s, 0) + 1
-
-        if status_counts:
-            for s, count in sorted(status_counts.items()):
-                color = _get_status_color(s)
-                st.markdown(
-                    f'<span style="color:{color};font-weight:600">{safe_html(s)}</span>: {count}',
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.caption("No items to report.")
-
 
 # ---------------------------------------------------------------------------
 # Main page
@@ -519,22 +595,18 @@ def _run_workbench() -> None:
     """Main entry point for the Workbench page."""
     st.header("🔬 Workbench")
 
-    _render_sidebar()
-
     items = get_workbench_items()
+    _render_sidebar(items)
 
     if not items:
         st.info(
             "No items in workbench yet. Use 🔬 Workbench on any tool or method "
             "to add one."
         )
-        _render_parser_health(items)
         return
 
     for wb_key, entry in items.items():
         _render_item_card(wb_key, entry)
-
-    _render_parser_health(items)
 
 
 _run_workbench()

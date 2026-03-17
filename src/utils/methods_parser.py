@@ -14,6 +14,8 @@ _METHOD_DEFAULTS: dict[str, Any] = {
     "source": "",
     "status": "New",
     "why it matters": "",
+    "method": "",
+    "idea": "",
 }
 
 

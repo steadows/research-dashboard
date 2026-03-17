@@ -261,7 +261,7 @@ def _render_item_card_body(item: dict[str, Any]) -> str:
         HTML string for the card body.
     """
     body = ""
-    for field in ("why it matters", "what it does", "description"):
+    for field in ("why it matters", "what it does", "description", "method", "idea"):
         value = item.get(field, "")
         if value:
             body += f"<br><em>{safe_html(value)}</em>"
@@ -272,13 +272,20 @@ def _render_item_card_body(item: dict[str, Any]) -> str:
 _ITEM_STATUS_OPTIONS = ["new", "reviewed", "queued", "skipped", "workbench"]
 
 
-def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -> None:
+def _render_item_card(
+    item: dict[str, Any],
+    item_id: str,
+    current_status: str,
+    project: dict[str, Any] | None = None,
+) -> None:
     """Render a single full-width item card with source badge and status/dismiss row.
 
     Args:
         item: Item dict from the project index.
         item_id: Unique item identifier for status persistence.
         current_status: Current status string.
+        project: Optional project dict — used to attach source_dir when
+            sending items to the workbench.
     """
     card_html = _render_item_card_header(item)
     card_html += _render_item_card_body(item)
@@ -312,7 +319,16 @@ def _render_item_card(item: dict[str, Any], item_id: str, current_status: str) -
             disabled=disabled,
             use_container_width=True,
         ):
-            add_to_workbench(item, previous_status=current_status)
+            # Attach project source_dir so the research agent can explore it
+            wb_item = {**item}
+            if project:
+                source_dir = project.get("source_dir", "")
+                if source_dir:
+                    wb_item["project_dir"] = str(
+                        Path(source_dir).expanduser()
+                    )
+                    wb_item["project_name"] = project.get("name", "")
+            add_to_workbench(wb_item, previous_status=current_status)
             set_item_status(item_id, "workbench", _STATUS_FILE)
             st.rerun()
 
@@ -422,7 +438,7 @@ def _render_flagged_items(
             st.session_state[idx_key] = idx + 1
             st.rerun()
 
-    _render_item_card(item, item_id, current_status)
+    _render_item_card(item, item_id, current_status, project=project)
     _render_analysis_buttons(item, project, idx)
 
 
