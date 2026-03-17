@@ -146,6 +146,7 @@ def launch_research_agent(tool: dict[str, Any], output_dir: Path) -> subprocess.
         _OPUS_MODEL,
         "--output-format",
         "stream-json",
+        "--verbose",
     ]
 
     log_fh = open(log_path, "w", encoding="utf-8")  # noqa: WPS515
