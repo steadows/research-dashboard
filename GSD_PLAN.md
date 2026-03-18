@@ -942,7 +942,7 @@ git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffoldin
 
 ---
 
-## Session 12: Agentic Hub — Instagram Ingester + Parser [ ]
+## Session 12: Agentic Hub — Instagram Ingester + Parser [x]
 
 Requires Session 11 complete.
 
@@ -952,41 +952,78 @@ written to the Obsidian vault as structured markdown. A companion parser reads t
 vault notes back into the dashboard data model. Sessions 12 and 13 implement the
 full pipeline end-to-end.
 
-### [12a] TDD — write ingester + parser tests first [ ]
+**Review fixes applied** (GPT 5.4 issues 1–5, Opus issues 6–10 — see `SESSION_12_PLAN_REVIEW_FIXES.md`):
+1. Added explicit `download_video()` helper with temp-file lifecycle
+2. `title` persisted in YAML frontmatter; parser reads it back
+3. Filenames include shortcode to prevent same-day collisions
+4. Caching stays at page layer only — parser is a pure utility
+5. New `call_haiku_json()` public helper in `claude_client.py`
+6. Instaloader session/auth strategy and 401/429 handling documented
+7. `transcribe_video` naming clarified (faster-whisper accepts video via ffmpeg)
+8. State file writes per-post (not batch) to prevent re-ingestion on crash
+9. `run_ingestion` accepts `known_projects` parameter
+10. Atomic writes use `os.replace()` (not `Path.replace()`) — tests mock `os.replace`
+
+### [12a] TDD — write ingester + parser tests first [x]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol. Do NOT skip steps or improvise your own TDD process.
 - `tests/test_instagram_ingester.py`:
   - `fetch_recent_posts` returns only video posts (skip images/carousels gracefully — no exception)
   - `fetch_recent_posts` filters by `days` cutoff (posts older than `days` are excluded)
   - `fetch_recent_posts` skips shortcodes already present in state file
   - `fetch_recent_posts` logs a WARNING for skipped non-video posts (not an error)
-  - `transcribe_audio` returns a string; applies `_TERM_CORRECTIONS` (mock `WhisperModel`)
-  - `transcribe_audio` maps "Cloud Code" → "Claude Code" in output text
-  - `extract_keywords_and_summary` calls Haiku via `claude_client.py`; returns dict with `key_points`, `keywords`, `title` keys
+  - `download_video` downloads video URL to `download_dir` and returns local `Path`
+  - `download_video` cleans up partial file on failure
+  - `transcribe_video` returns a string; applies `_TERM_CORRECTIONS` (mock `WhisperModel`)
+  - `transcribe_video` maps "Cloud Code" → "Claude Code" in output text
+  - `extract_keywords_and_summary` calls Haiku via `claude_client.call_haiku_json()`; returns dict with `key_points`, `keywords`, `title` keys
   - `extract_keywords_and_summary` includes known-project wiki-links (e.g. `[[Claude Code]]`) in keywords when project name appears in transcript
-  - `write_vault_note` creates file at `{vault_path}/Research/Instagram/{username}/YYYY-MM-DD.md`
+  - `write_vault_note` creates file at `{vault_path}/Research/Instagram/{username}/YYYY-MM-DD-{shortcode}.md`
   - `write_vault_note` creates intermediate directories if missing
   - `write_vault_note` returns Path to written file
-  - Written file contains YAML frontmatter with `tags`, `date`, `account`, `shortcode`, `source_url`
+  - Written file contains YAML frontmatter with `title`, `tags`, `date`, `account`, `shortcode`, `source_url`
   - Written file contains `## Caption`, `## Key Points`, `## Keywords`, `## Transcript` sections
   - `run_ingestion` orchestrates full pipeline and returns list of written Paths
-  - State file write is atomic (mock `os.replace`; verify temp file used)
+  - State file write is atomic per-post (mock `os.replace`; verify temp file used after each successful write)
   - `run_ingestion` records each shortcode in state file after successful write
   - `run_ingestion` skips post and logs WARNING if transcription raises (never propagates exception)
+  - `run_ingestion` deletes downloaded video in `finally` block after each post
 - `tests/test_instagram_parser.py`:
   - `parse_instagram_posts` returns empty list when `Research/Instagram/` does not exist
-  - `parse_instagram_posts` parses YAML frontmatter: `account`, `date`, `shortcode`, `source_url`
+  - `parse_instagram_posts` parses YAML frontmatter: `title`, `account`, `date`, `shortcode`, `source_url`
+  - `parse_instagram_posts` uses `title` from frontmatter as `name` (falls back to `file.stem`)
   - `parse_instagram_posts` parses `## Key Points` bullets into `key_points` list
   - `parse_instagram_posts` parses `## Keywords` line into `keywords` list (strips `[[` / `]]`)
   - `parse_instagram_posts` captures `## Caption` and `## Transcript` as plain strings
   - `parse_instagram_posts` sets `source_type = "instagram"` on every returned dict
   - `parse_instagram_posts` filters by `accounts` when provided (ignores other accounts)
   - `parse_instagram_posts` tolerates a malformed file without raising (logs WARNING, skips)
-  - Round-trip: `write_vault_note` output → `parse_instagram_posts` → fields match original inputs
+  - Round-trip: `write_vault_note` output → `parse_instagram_posts` → fields match original inputs (including `title`)
+- `tests/test_claude_client.py` (append):
+  - `call_haiku_json` calls `_call_api` with Haiku model and returns response text
+  - `call_haiku_json` respects `max_tokens` parameter
 - [ ] **Verify RED**: `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py -v` — ALL tests FAIL (modules not yet created)
 
-### [12b] src/utils/instagram_ingester.py [ ]
+### [12b] src/utils/claude_client.py — add `call_haiku_json` [x]
+- Add a thin public wrapper over the existing `_call_api()`:
+  ```python
+  def call_haiku_json(prompt: str, max_tokens: int = 600) -> str:
+      """Call Haiku for structured JSON extraction.
+
+      Args:
+          prompt: User prompt expecting JSON response.
+          max_tokens: Maximum response tokens.
+
+      Returns:
+          Raw response text (caller parses JSON).
+      """
+      result = _call_api(prompt, model=HAIKU_MODEL, max_tokens=max_tokens)
+      return result["response"]
+  ```
+- Uses the existing `HAIKU_MODEL` constant already defined in the module.
+
+### [12c] src/utils/instagram_ingester.py [x]
 - **MANDATORY**: Use the Read tool to read `src/utils/status_tracker.py` to reuse the atomic write pattern (tempfile + `os.replace`) for state file writes.
-- Imports: `instaloader`, `faster_whisper.WhisperModel`, `claude_client` (for Haiku calls), `pathlib.Path`, `json`, `logging`, `datetime`
+- Imports: `instaloader`, `faster_whisper.WhisperModel`, `claude_client` (for `call_haiku_json`), `pathlib.Path`, `json`, `logging`, `datetime`, `tempfile`
 - **Term corrections** (hardcoded constant, not user-configurable):
   ```python
   _TERM_CORRECTIONS: dict[str, str] = {
@@ -1006,7 +1043,12 @@ full pipeline end-to-end.
       state_file: Path = _DEFAULT_STATE_FILE,
   ) -> list[dict]
 
-  def transcribe_audio(video_path: Path) -> str
+  def download_video(
+      post: dict,
+      download_dir: Path,
+  ) -> Path
+
+  def transcribe_video(video_path: Path) -> str
 
   def extract_keywords_and_summary(
       transcript: str,
@@ -1024,6 +1066,7 @@ full pipeline end-to-end.
   def run_ingestion(
       username: str,
       vault_path: Path,
+      known_projects: list[str] | None = None,
       days: int = 14,
       state_file: Path = _DEFAULT_STATE_FILE,
   ) -> list[Path]
@@ -1031,12 +1074,20 @@ full pipeline end-to-end.
 - **`fetch_recent_posts`**:
   - Load state from `state_file` (empty dict if missing)
   - Use `instaloader.Instaloader()` + `Profile.from_username()` to iterate posts
-  - Apply 2–3s `time.sleep()` delay between each download to avoid rate limiting
+  - **Auth strategy**: anonymous access by default. If Instagram returns 401 or `LoginRequiredException`, log `ERROR: Instagram login required — set INSTAGRAM_SESSION_FILE env var` and return empty list. Do NOT prompt for credentials interactively.
+  - Apply 2–3s `time.sleep()` delay between post metadata fetches to avoid rate limiting
+  - On 429 / `TooManyRequestsException`: log WARNING, sleep 30s, retry once, then skip remaining posts
   - Skip post if `post.shortcode` already in state
   - Skip post if `not post.is_video` — log `WARNING: Skipping non-video post {shortcode}` and continue
   - Skip post if `post.date_utc < (datetime.utcnow() - timedelta(days=days))`
   - Return list of dicts: `{shortcode, url: post.video_url, caption: post.caption, date: post.date_utc.date().isoformat(), username}`
-- **`transcribe_audio`**:
+- **`download_video`**:
+  - Download video from `post["url"]` to `download_dir / f"{post['shortcode']}.mp4"`
+  - Use `instaloader.Instaloader().download_pic()` or `urllib.request.urlretrieve()` — whichever is simpler
+  - Apply 2–3s `time.sleep()` after download (rate-limit courtesy)
+  - On failure: delete partial file if it exists, then re-raise
+  - Return `Path` to downloaded file
+- **`transcribe_video`** (note: named `_video` because faster-whisper accepts video files directly via internal ffmpeg):
   - Initialize `WhisperModel("base", device="cpu", compute_type="int8")` via lazy singleton
   - Call `model.transcribe(str(video_path))`
   - Join all segment texts into a single string
@@ -1045,28 +1096,35 @@ full pipeline end-to-end.
 - **`extract_keywords_and_summary`**:
   - Build a Haiku prompt asking for: `title` (≤10 words), `key_points` (3–5 bullet strings), `keywords` (project wiki-links + general terms)
   - Keyword wiki-link rule: if a known project name appears verbatim in `transcript` or `caption`, include it as `[[Project Name]]`
-  - Call `claude_client.call_haiku(prompt)` (or equivalent existing client function — reuse, do not create a new API path)
-  - Parse JSON response; return `{"title": str, "key_points": list[str], "keywords": list[str]}`
-  - On parse failure: log WARNING, return safe defaults (`title=username`, `key_points=[]`, `keywords=[]`)
+  - Call `claude_client.call_haiku_json(prompt)` — parse the returned JSON
+  - Return `{"title": str, "key_points": list[str], "keywords": list[str]}`
+  - On parse failure: log WARNING, return safe defaults (`title=caption[:60] or "Instagram Post"`, `key_points=[]`, `keywords=[]`)
 - **`write_vault_note`**:
-  - Output path: `{vault_path}/Research/Instagram/{post["username"]}/{post["date"]}.md`
+  - Output path: `{vault_path}/Research/Instagram/{post["username"]}/{post["date"]}-{post["shortcode"]}.md`
   - `mkdir(parents=True, exist_ok=True)` before writing
-  - YAML frontmatter: `tags`, `date`, `account`, `shortcode`, `source_url`
+  - YAML frontmatter: `title`, `tags`, `date`, `account`, `shortcode`, `source_url`
   - Body sections: `## Caption`, `## Key Points` (bulleted), `## Keywords` (comma-separated wiki-links on one line), `## Transcript`
   - Write atomically: write to temp file in same directory, then `os.replace()`
   - Return `Path` to written file
 - **`run_ingestion`**:
-  - For each post from `fetch_recent_posts`: download video, transcribe, extract, write note
+  - `known_projects` defaults to `[]` if `None`
+  - Create a temporary download directory via `tempfile.mkdtemp(prefix="ig_ingest_")`
+  - For each post from `fetch_recent_posts`:
+    1. `download_video(post, download_dir)` → `video_path`
+    2. `transcribe_video(video_path)` → `transcript`
+    3. `extract_keywords_and_summary(transcript, post["caption"], known_projects)` → `extracted`
+    4. `write_vault_note(post, transcript, extracted, vault_path)` → `note_path`
+    5. In `finally` block: delete `video_path` if it exists
   - On any per-post exception: log `WARNING: Failed to ingest {shortcode}: {exc}`, continue (never propagates)
-  - After successful `write_vault_note`: add `{shortcode: {"ingested_at": ISO, "note_path": str(path)}}` to state dict
-  - Write updated state atomically at end (not per-post — batch write)
+  - After each successful `write_vault_note`: add `{shortcode: {"ingested_at": ISO, "note_path": str(path)}}` to state dict and write state atomically (per-post, not batch — prevents re-ingestion on crash)
+  - Clean up `download_dir` at end in a `finally` block
   - Return list of successfully written Paths
 - Module-level logger: `logger = logging.getLogger(__name__)`
-- `pathlib.Path` throughout; no `os.path`
+- `pathlib.Path` throughout; `os.replace()` is the one exception (used for atomic rename — not an `os.path` function)
 
-### [12c] src/utils/instagram_parser.py [ ]
+### [12d] src/utils/instagram_parser.py [x]
 - **MANDATORY**: Use the Read tool to read `src/utils/parser_helpers.py` to reuse `split_h2_sections()` and `parse_fields()`. Do not duplicate section-splitting logic.
-- Cached with `@st.cache_data(ttl=3600)` — document in docstring that callers should not wrap again.
+- **No `@st.cache_data`** — this is a pure utility module with no Streamlit import. Caching is applied at the page layer (Session 13 adds a `_load_instagram_posts()` wrapper in `1_Dashboard.py`, consistent with `_load_blog_queue()`, `_load_tools()`, etc.).
 - Public API:
   ```python
   def parse_instagram_posts(
@@ -1076,14 +1134,14 @@ full pipeline end-to-end.
   ```
 - Glob `Research/Instagram/**/*.md` (recursive) under `vault_path`
 - For each file:
-  - Parse YAML frontmatter with `yaml.safe_load()` — extract `account`, `date`, `shortcode`, `source_url`, `tags`
+  - Parse YAML frontmatter with `yaml.safe_load()` — extract `title`, `account`, `date`, `shortcode`, `source_url`, `tags`
   - Use `split_h2_sections()` to extract section bodies: `Caption`, `Key Points`, `Keywords`, `Transcript`
   - Parse `Key Points` lines: strip leading `- ` → `list[str]`
   - Parse `Keywords` line: split on `,`, strip whitespace and `[[` / `]]` → `list[str]`
   - Build return dict:
     ```python
     {
-        "name": extracted["title"] or file.stem,
+        "name": frontmatter.get("title") or file.stem,
         "account": frontmatter["account"],
         "date": frontmatter["date"],
         "source_url": frontmatter.get("source_url", ""),
@@ -1100,26 +1158,26 @@ full pipeline end-to-end.
 - Sort by `date` descending
 - Module-level logger: `logger = logging.getLogger(__name__)`
 
-### [12d] Update requirements.txt [ ]
+### [12e] Update requirements.txt [x]
 - Add `instaloader` and `faster-whisper` entries (verify exact PyPI package names match official registry)
 - Do NOT add `ffmpeg` — already in conda env, not a pip dependency
 
-### [12e] Verify GREEN [ ]
-- [ ] Run `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py -v` — ALL tests PASS
-- [ ] Run round-trip test: `write_vault_note` output → `parse_instagram_posts` → fields match
+### [12f] Verify GREEN [x]
+- [ ] Run `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py tests/test_claude_client.py -v` — ALL tests PASS
+- [ ] Run round-trip test: `write_vault_note` output → `parse_instagram_posts` → fields match (including `title`)
 - [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
 - [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — `instagram_ingester` ≥ 80%, `instagram_parser` ≥ 80%, utils total ≥ 80%
 
-### [12f] Quality Gate [ ]
+### [12g] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean (`ruff check src/ tests/`), format clean (`ruff format --check`), full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `instagram_ingester.py` (atomic state write, rate-limit delay, per-post exception isolation, no shell=True), `instagram_parser.py` (cache decorator, immutable returns, malformed-file tolerance). Security review focus: vault write path stays within `vault_path` boundary (verify with `.resolve().is_relative_to()`), no user-controlled paths in subprocess or shell calls, `yaml.safe_load()` used. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean (`ruff check src/ tests/`), format clean (`ruff format --check`), full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `instagram_ingester.py` (atomic state write per-post, rate-limit delay, per-post exception isolation, download cleanup in finally, no shell=True), `instagram_parser.py` (no streamlit import, immutable returns, malformed-file tolerance), `claude_client.py` (new `call_haiku_json` is thin wrapper only). Security review focus: vault write path stays within `vault_path` boundary (verify with `.resolve().is_relative_to()`), no user-controlled paths in subprocess or shell calls, `yaml.safe_load()` used, downloaded video files cleaned up. All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [12g] Commit [ ]
+### [12h] Commit [x]
 ```bash
-git add src/ tests/ requirements.txt GSD_PLAN.md
+git add src/utils/claude_client.py src/utils/instagram_ingester.py src/utils/instagram_parser.py tests/ requirements.txt GSD_PLAN.md
 git commit -m "feat: instagram ingestion pipeline — instaloader fetch, whisper transcription, haiku extraction, vault writer, parser"
 ```
 

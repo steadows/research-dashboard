@@ -240,6 +240,20 @@ def _analyze_item(
     return result
 
 
+def call_haiku_json(prompt: str, max_tokens: int = 600) -> str:
+    """Call Haiku for structured JSON extraction.
+
+    Args:
+        prompt: User prompt expecting JSON response.
+        max_tokens: Maximum response tokens.
+
+    Returns:
+        Raw response text (caller parses JSON).
+    """
+    result = _call_api(prompt, model=_HAIKU_MODEL, max_tokens=max_tokens)
+    return result["response"]
+
+
 def analyze_item_quick(
     item: dict,
     project: dict,

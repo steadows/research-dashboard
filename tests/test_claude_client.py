@@ -12,6 +12,7 @@ from utils.claude_client import (
     _get_client,
     analyze_item_deep,
     analyze_item_quick,
+    call_haiku_json,
 )
 
 
@@ -327,3 +328,46 @@ class TestLLMTrace:
                             assert len(prompt_records) == 0
                         finally:
                             trace_logger.removeHandler(handler)
+
+
+class TestCallHaikuJson:
+    """Tests for call_haiku_json — thin Haiku wrapper."""
+
+    def test_calls_api_with_haiku_model(self, tmp_path: Path) -> None:
+        """call_haiku_json calls _call_api with the Haiku model."""
+        with patch.dict(
+            "os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False
+        ):
+            with patch("utils.claude_client.anthropic.Anthropic") as mock_cls:
+                mock_client = MagicMock()
+                mock_cls.return_value = mock_client
+                mock_client.messages.create.return_value = _mock_api_response(
+                    '{"key": "value"}'
+                )
+
+                result = call_haiku_json("Extract JSON from this text")
+
+                call_kwargs = mock_client.messages.create.call_args
+                model_used = call_kwargs.kwargs.get(
+                    "model", call_kwargs[1].get("model", "")
+                )
+                assert "haiku" in model_used.lower()
+                assert result == '{"key": "value"}'
+
+    def test_respects_max_tokens(self, tmp_path: Path) -> None:
+        """call_haiku_json passes max_tokens to the API."""
+        with patch.dict(
+            "os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False
+        ):
+            with patch("utils.claude_client.anthropic.Anthropic") as mock_cls:
+                mock_client = MagicMock()
+                mock_cls.return_value = mock_client
+                mock_client.messages.create.return_value = _mock_api_response("ok")
+
+                call_haiku_json("prompt", max_tokens=300)
+
+                call_kwargs = mock_client.messages.create.call_args
+                tokens = call_kwargs.kwargs.get(
+                    "max_tokens", call_kwargs[1].get("max_tokens", 0)
+                )
+                assert tokens == 300
