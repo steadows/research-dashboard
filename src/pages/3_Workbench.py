@@ -52,6 +52,7 @@ _STATUS_COLORS: dict[str, str] = {
 _SOURCE_TYPE_COLORS: dict[str, str] = {
     "method": "#8B5CF6",
     "tool": "#10B981",
+    "instagram": "#6366F1",
 }
 
 
@@ -226,8 +227,7 @@ def _poll_research_status(wb_key: str, entry: dict[str, Any]) -> None:
         # Non-retryable failure or retries exhausted
         log_tail = tail_log(log_file, n=10)
         logger.warning(
-            "Research failed for '%s': research.md absent (retries=%d). "
-            "Log tail:\n%s",
+            "Research failed for '%s': research.md absent (retries=%d). Log tail:\n%s",
             tool_name,
             retry_count,
             log_tail,
@@ -293,6 +293,19 @@ def _build_summary_html(wb_key: str, entry: dict[str, Any]) -> str:
         return (
             '  <div style="color:#6B7280;font-size:0.8rem;font-style:italic;'
             'margin-bottom:12px">No description available</div>\n'
+        )
+
+    if source_type == "instagram":
+        caption = item.get("caption", "")
+        if caption:
+            truncated = caption[:200] + ("…" if len(caption) > 200 else "")
+            return (
+                f'  <div style="color:#D1D5DB;font-size:0.9rem;line-height:1.6;'
+                f'margin-bottom:12px">{safe_html(truncated)}</div>\n'
+            )
+        return (
+            '  <div style="color:#6B7280;font-size:0.8rem;font-style:italic;'
+            'margin-bottom:12px">No caption available</div>\n'
         )
 
     if status == "researched":
@@ -398,7 +411,7 @@ def _render_researching_panel(wb_key: str, entry: dict[str, Any]) -> None:
             st.markdown(
                 f'<div style="background:#111827;border:1px solid #1F2937;'
                 f'border-radius:6px;padding:10px 14px;margin:8px 0">'
-                f'{feed_html}</div>',
+                f"{feed_html}</div>",
                 unsafe_allow_html=True,
             )
         else:
@@ -534,7 +547,9 @@ def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
     col_research, col_remove = st.columns([1, 1])
 
     with col_research:
-        research_disabled = status not in ("queued", "failed")
+        research_disabled = (
+            status not in ("queued", "failed") or source_type == "instagram"
+        )
         if st.button(
             "🔍 Research",
             key=f"workbench__research_{wb_key}",
@@ -542,6 +557,8 @@ def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
         ):
             logger.info("UI: Research button clicked for '%s'", wb_key)
             _handle_research_click(wb_key, entry)
+        if source_type == "instagram":
+            st.caption("Research agent not yet wired for instagram posts.")
 
     with col_remove:
         if st.button("🗑️ Remove", key=f"workbench__remove_{wb_key}"):
@@ -583,7 +600,6 @@ def _extract_section(content: str, heading: str) -> str:
 # ---------------------------------------------------------------------------
 # Parser health panel
 # ---------------------------------------------------------------------------
-
 
 
 # ---------------------------------------------------------------------------

@@ -1163,16 +1163,16 @@ full pipeline end-to-end.
 - Do NOT add `ffmpeg` — already in conda env, not a pip dependency
 
 ### [12f] Verify GREEN [x]
-- [ ] Run `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py tests/test_claude_client.py -v` — ALL tests PASS
-- [ ] Run round-trip test: `write_vault_note` output → `parse_instagram_posts` → fields match (including `title`)
-- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — `instagram_ingester` ≥ 80%, `instagram_parser` ≥ 80%, utils total ≥ 80%
+- [x] Run `pytest tests/test_instagram_ingester.py tests/test_instagram_parser.py tests/test_claude_client.py -v` — ALL tests PASS
+- [x] Run round-trip test: `write_vault_note` output → `parse_instagram_posts` → fields match (including `title`)
+- [x] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — `instagram_ingester` ≥ 80%, `instagram_parser` ≥ 80%, utils total ≥ 80%
 
 ### [12g] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean (`ruff check src/ tests/`), format clean (`ruff format --check`), full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `instagram_ingester.py` (atomic state write per-post, rate-limit delay, per-post exception isolation, download cleanup in finally, no shell=True), `instagram_parser.py` (no streamlit import, immutable returns, malformed-file tolerance), `claude_client.py` (new `call_haiku_json` is thin wrapper only). Security review focus: vault write path stays within `vault_path` boundary (verify with `.resolve().is_relative_to()`), no user-controlled paths in subprocess or shell calls, `yaml.safe_load()` used, downloaded video files cleaned up. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean (`ruff check src/ tests/`), format clean (`ruff format --check`), full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `instagram_ingester.py` (atomic state write per-post, rate-limit delay, per-post exception isolation, download cleanup in finally, no shell=True), `instagram_parser.py` (no streamlit import, immutable returns, malformed-file tolerance), `claude_client.py` (new `call_haiku_json` is thin wrapper only). Security review focus: vault write path stays within `vault_path` boundary (verify with `.resolve().is_relative_to()`), no user-controlled paths in subprocess or shell calls, `yaml.safe_load()` used, downloaded video files cleaned up. All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate session for extractable patterns → save to `~/.claude/skills/learned/`.
 
 ### [12h] Commit [x]
@@ -1183,7 +1183,7 @@ git commit -m "feat: instagram ingestion pipeline — instaloader fetch, whisper
 
 ---
 
-## Session 13: Agentic Hub Tab + Workbench Integration [ ]
+## Session 13: Agentic Hub Tab + Workbench Integration [x]
 
 Requires Session 12 complete.
 
@@ -1192,7 +1192,7 @@ account filtering and per-card actions. Instagram posts flow into the existing W
 via `add_to_workbench` with `source_type="instagram"`. The research agent prompt is
 extended to include the post transcript as additional context.
 
-### [13a] TDD — write Agentic Hub tab + workbench integration tests first [ ]
+### [13a] TDD — write Agentic Hub tab + workbench integration tests first [x]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_agentic_hub.py`:
   - `render_agentic_hub_tab` renders empty state when `parse_instagram_posts` returns `[]`
@@ -1212,7 +1212,7 @@ extended to include the post transcript as additional context.
   - `_build_prompt` for research agent includes `<context>` block with transcript when `transcript` key present in item dict
 - [ ] **Verify RED**: `pytest tests/test_agentic_hub.py tests/test_instagram_workbench.py -v` — ALL tests FAIL
 
-### [13b] Dashboard — add "Agentic Hub" tab [ ]
+### [13b] Dashboard — add "Agentic Hub" tab [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/using-streamlit-layouts/SKILL.md`. Apply tab and column patterns.
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/avoiding-streamlit-widget-pitfalls/SKILL.md`. Apply key-only widget patterns.
 - In `src/pages/1_Dashboard.py`:
@@ -1221,7 +1221,7 @@ extended to include the post transcript as additional context.
   - Call `parse_instagram_posts(vault_path)` wrapped with `@st.cache_data(ttl=3600)` on the call site (consistent with other parser calls in this file)
   - Render empty state (`st.info(...)`) when posts list is empty — message: `"No Instagram posts ingested yet. Run the ingester for an account to populate this tab."`
 
-### [13c] Account filter pills [ ]
+### [13c] Account filter pills [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/choosing-streamlit-selection-widgets/SKILL.md`. Apply pill/button filter patterns consistent with existing Dashboard filter UI.
 - Build unique account list from posts: `sorted({p["account"] for p in posts})`
 - Render as pill buttons: `["All"] + sorted_accounts`
@@ -1229,7 +1229,7 @@ extended to include the post transcript as additional context.
 - On click: update `dashboard__agentic_hub_account_filter` → `st.rerun()`
 - Filter posts list before rendering cards
 
-### [13d] Post cards [ ]
+### [13d] Post cards [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply surface-card HTML and badge patterns consistent with existing tool/blog cards.
 - Per post card (surface-card div):
   - Header row: account badge (blue `#1E40AF`), date string (right-aligned)
@@ -1241,14 +1241,14 @@ extended to include the post transcript as additional context.
     - `🔬 Workbench` — disabled when `make_item_key("instagram", post["shortcode"])` already in `get_workbench_items()`. On click: `add_to_workbench(post, previous_status="new")`, `st.rerun()`
 - All vault-sourced strings use `safe_html()` before `unsafe_allow_html=True`
 
-### [13e] Workbench — instagram entry rendering [ ]
+### [13e] Workbench — instagram entry rendering [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply badge patterns.
 - In `src/pages/3_Workbench.py`:
   - Extend source-type badge colors: `"instagram"` → indigo `#6366F1` (distinct from method purple and tool green)
   - For instagram entries: show `caption` field (truncated to 200 chars) as the synthesis line instead of LLM summary
   - `🔍 Research` button: disabled for instagram entries (`source_type == "instagram"`) — research pipeline is tool/method-specific for now. Document with `st.caption("Research agent not yet wired for instagram posts.")` beneath the disabled button.
 
-### [13f] Research agent — transcript context injection [ ]
+### [13f] Research agent — transcript context injection [x]
 - In `src/utils/research_agent.py`:
   - In `_build_prompt(item: dict) -> str` (or wherever the COSTAR prompt is assembled):
     - If `item.get("transcript")` is non-empty: append a `<context>` block containing the first 4000 chars of the transcript after the existing `<context>` block content
@@ -1256,21 +1256,21 @@ extended to include the post transcript as additional context.
   - No changes to subprocess invocation — only the prompt string changes
   - Ensure existing tool-path tests still pass (transcript field absent → no change)
 
-### [13g] Verify GREEN [ ]
+### [13g] Verify GREEN [x]
 - [ ] Run `pytest tests/test_agentic_hub.py tests/test_instagram_workbench.py -v` — ALL tests PASS
 - [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
 - [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
 - [ ] `ruff check src/ tests/` — no errors
 - [ ] `ruff format --check src/ tests/` — no formatting issues
 
-### [13h] Quality Gate [ ]
+### [13h] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 
 - [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `1_Dashboard.py` Agentic Hub tab (XSS via `safe_html()`, filter state namespacing, no API call on render path), `3_Workbench.py` instagram entry rendering (no KeyError on missing transcript/caption), `research_agent.py` transcript injection (truncation at 4000 chars, no prompt injection from vault content). Security review focus: transcript injected into prompt is bounded (4000 chars), vault strings escaped before HTML rendering, no user-controlled URLs passed to subprocess. All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 12–13 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [13i] Commit [ ]
+### [13i] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: agentic hub tab — instagram post cards, account filter, workbench integration, transcript context injection"

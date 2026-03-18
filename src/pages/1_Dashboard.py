@@ -23,6 +23,7 @@ from utils.claude_client import (
     deep_read_paper,
     generate_blog_draft,
     generate_linkedin_post,
+    summarize_instagram_post,
     summarize_paper,
     summarize_tool,
 )
@@ -37,10 +38,15 @@ from utils.page_helpers import (
     safe_parse,
 )
 from utils.paper_fetcher import get_cached_paper_context
+from utils.instagram_parser import parse_instagram_posts
 from utils.reports_parser import parse_journalclub_reports, parse_tldr_reports
 from utils.status_tracker import get_item_status, set_item_status
 from utils.tools_parser import parse_tools
-from utils.workbench_tracker import add_to_workbench
+from utils.workbench_tracker import (
+    add_to_workbench,
+    get_workbench_items,
+    make_item_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +77,12 @@ def _load_journalclub_reports(vault_path_str: str) -> list[dict[str, Any]]:
 def _load_tldr_reports(vault_path_str: str) -> list[dict[str, Any]]:
     """Load TLDR reports with caching."""
     return parse_tldr_reports(Path(vault_path_str))
+
+
+@st.cache_data(ttl=3600)
+def _load_instagram_posts(vault_path_str: str) -> list[dict[str, Any]]:
+    """Load Instagram posts with caching."""
+    return parse_instagram_posts(Path(vault_path_str))
 
 
 # ---------------------------------------------------------------------------
@@ -851,6 +863,163 @@ def _render_signal_entry(signal: dict[str, str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Agentic Hub tab
+# ---------------------------------------------------------------------------
+
+
+def _render_agentic_hub_tab(posts: list[dict[str, Any]]) -> None:
+    """Render Agentic Hub tab with instagram post cards and account filter."""
+    st.subheader("🤖 Agentic Hub")
+
+    if not posts:
+        st.info(
+            "No Instagram posts ingested yet. Run the ingester for an account "
+            "to populate this tab."
+        )
+        return
+
+    # Account filter pills
+    sorted_accounts = sorted({p["account"] for p in posts})
+    filter_options = ["All"] + sorted_accounts
+
+    filter_key = "dashboard__agentic_hub_account_filter"
+    if filter_key not in st.session_state:
+        st.session_state[filter_key] = "All"
+
+    _render_account_pills(filter_options, filter_key)
+
+    # Filter posts by selected account
+    selected = st.session_state[filter_key]
+    filtered = (
+        posts if selected == "All" else [p for p in posts if p["account"] == selected]
+    )
+
+    if not filtered:
+        st.info("No posts match the selected account.")
+        return
+
+    # Render post cards
+    wb_items = get_workbench_items()
+    for post in filtered:
+        _render_post_card(post, wb_items)
+
+
+def _render_account_pills(options: list[str], filter_key: str) -> None:
+    """Render account filter as pill buttons with amber active highlight."""
+    current = st.session_state.get(filter_key, "All")
+    cols = st.columns(len(options))
+    for i, option in enumerate(options):
+        with cols[i]:
+            is_active = option == current
+            border = "2px solid #F59E0B" if is_active else "1px solid #1F2937"
+            if st.button(
+                option,
+                key=f"dashboard__agentic_hub_pill_{option}",
+                use_container_width=True,
+            ):
+                st.session_state[filter_key] = option
+                st.rerun()
+            if is_active:
+                st.markdown(
+                    f'<div style="margin-top:-12px;border-bottom:{border};"></div>',
+                    unsafe_allow_html=True,
+                )
+
+
+def _render_post_card(
+    post: dict[str, Any], wb_items: dict[str, dict[str, Any]]
+) -> None:
+    """Render a single instagram post card with actions."""
+    account = safe_html(post["account"])
+    date_str = safe_html(post["date"])
+    title = safe_html(post["name"])
+    shortcode = post["shortcode"]
+
+    # Key points HTML
+    kp_html = ""
+    if post.get("key_points"):
+        kp_items = "".join(f"<li>{safe_html(p)}</li>" for p in post["key_points"])
+        kp_html = (
+            f'<ul style="color:#D1D5DB;font-size:0.9rem;line-height:1.6;'
+            f'margin:8px 0 12px;padding-left:20px">{kp_items}</ul>'
+        )
+
+    # Keyword chips HTML
+    kw_html = ""
+    if post.get("keywords"):
+        kw_html = " ".join(
+            f'<span style="background:#78350F;color:#F59E0B;font-size:0.72rem;'
+            f'padding:2px 8px;border-radius:4px">{safe_html(k)}</span>'
+            for k in post["keywords"]
+        )
+        kw_html = f'<div style="margin-top:8px">{kw_html}</div>'
+
+    card_html = f"""
+<div class="surface-card" style="padding:20px;margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span style="background:#1E40AF;color:#fff;padding:2px 10px;
+                 border-radius:4px;font-size:0.7rem;font-weight:600">{account}</span>
+    <span style="color:#6B7280;font-size:0.8rem">{date_str}</span>
+  </div>
+  <div style="font-size:1.1rem;font-weight:600;margin-bottom:8px">{title}</div>
+{kp_html}{kw_html}
+</div>"""
+    st.markdown(card_html, unsafe_allow_html=True)
+
+    # Action row
+    _render_post_actions(post, shortcode, wb_items)
+
+    # Inline summary (if already generated)
+    summary_key = f"dashboard__agentic_hub_summary_{shortcode}"
+    if summary_key in st.session_state:
+        st.markdown(
+            f'<div class="surface-card" style="padding:14px;margin-bottom:16px;'
+            f'border-left:3px solid #3B82F6">'
+            f'<span style="color:#9CA3AF;font-size:0.8rem;font-weight:600">'
+            f"Summary</span><br>"
+            f'<span style="color:#D1D5DB;font-size:0.9rem">'
+            f"{safe_html(st.session_state[summary_key])}</span></div>",
+            unsafe_allow_html=True,
+        )
+
+
+def _render_post_actions(
+    post: dict[str, Any],
+    shortcode: str,
+    wb_items: dict[str, dict[str, Any]],
+) -> None:
+    """Render Summarize and Workbench action buttons for a post card."""
+    summary_key = f"dashboard__agentic_hub_summary_{shortcode}"
+    wb_key = make_item_key("instagram", shortcode)
+    summary_exists = summary_key in st.session_state
+    in_workbench = wb_key in wb_items
+
+    col_summarize, col_workbench = st.columns([1, 1])
+
+    with col_summarize:
+        if st.button(
+            "📝 Summarize",
+            key=f"dashboard__agentic_hub_summarize_{shortcode}",
+            disabled=summary_exists,
+        ):
+            with st.spinner("Summarizing with Haiku…"):
+                result = summarize_instagram_post(post)
+                st.session_state[summary_key] = result
+                st.rerun()
+
+    with col_workbench:
+        if st.button(
+            "🔬 Workbench",
+            key=f"dashboard__agentic_hub_workbench_{shortcode}",
+            disabled=in_workbench,
+        ):
+            # Use shortcode as the name for workbench keying
+            wb_item = {**post, "name": shortcode}
+            add_to_workbench(wb_item, previous_status="new")
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Main page
 # ---------------------------------------------------------------------------
 
@@ -876,15 +1045,19 @@ def _run_dashboard() -> None:
     blog_items = safe_parse(
         _load_blog_queue, vault_str, fallback=[], label="blog queue"
     )
+    instagram_posts = safe_parse(
+        _load_instagram_posts, vault_str, fallback=[], label="instagram posts"
+    )
 
     # Tab navigation
-    tab_home, tab_blog, tab_tools, tab_archive, tab_signal = st.tabs(
+    tab_home, tab_blog, tab_tools, tab_archive, tab_signal, tab_agentic = st.tabs(
         [
             "🏠 Home",
             "✍️ Blog Queue",
             "🔧 Tools Radar",
             "📚 Research Archive",
             "📰 Weekly AI Signal",
+            "🤖 Agentic Hub",
         ]
     )
 
@@ -902,6 +1075,9 @@ def _run_dashboard() -> None:
 
     with tab_signal:
         _render_weekly_ai_signal_tab(tldr_reports)
+
+    with tab_agentic:
+        _render_agentic_hub_tab(instagram_posts)
 
 
 _run_dashboard()

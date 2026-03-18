@@ -324,9 +324,7 @@ def _render_item_card(
             if project:
                 source_dir = project.get("source_dir", "")
                 if source_dir:
-                    wb_item["project_dir"] = str(
-                        Path(source_dir).expanduser()
-                    )
+                    wb_item["project_dir"] = str(Path(source_dir).expanduser())
                     wb_item["project_name"] = project.get("name", "")
             add_to_workbench(wb_item, previous_status=current_status)
             set_item_status(item_id, "workbench", _STATUS_FILE)

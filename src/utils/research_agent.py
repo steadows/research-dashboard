@@ -59,7 +59,7 @@ Tool name: {name}
 Category: {category}
 Source: {source}
 Description: {description}
-{project_context}</context>
+{project_context}{transcript_context}</context>
 
 <objective>
 Research this tool thoroughly. Use Exa to search for documentation, GitHub \
@@ -127,8 +127,7 @@ def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
     project_name = tool.get("project_name", "")
     if project_dir:
         project_context = (
-            f"\nTarget project: {project_name}\n"
-            f"Project directory: {project_dir}\n"
+            f"\nTarget project: {project_name}\nProject directory: {project_dir}\n"
         )
         project_objective = (
             " Also explore the project directory to understand the existing "
@@ -140,12 +139,23 @@ def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
         project_context = ""
         project_objective = ""
 
+    # Inject transcript context when available (e.g. instagram posts)
+    transcript = tool.get("transcript", "")
+    transcript_context = ""
+    if transcript:
+        truncated_transcript = transcript[:4000]
+        transcript_context = f"\n<transcript>\n{truncated_transcript}\n</transcript>\n"
+        logger.debug(
+            "Injecting transcript context: %d chars", len(truncated_transcript)
+        )
+
     return _COSTAR_PROMPT_TEMPLATE.format(
         name=tool.get("name", "Unknown"),
         category=tool.get("category", "Unknown"),
         source=tool.get("source", "Unknown"),
         description=description,
         project_context=project_context,
+        transcript_context=transcript_context,
         project_objective=project_objective,
         output_path=str(output_dir / "research.md"),
     )
@@ -266,7 +276,10 @@ def is_retryable_failure(log_file: Path) -> bool:
         True if the failure appears transient and worth retrying.
     """
     tail = tail_log(log_file, n=20)
-    return any(marker in tail for marker in ("529", "Overloaded", "500", "Internal server error"))
+    return any(
+        marker in tail
+        for marker in ("529", "Overloaded", "500", "Internal server error")
+    )
 
 
 # Keep old name as alias for backward compatibility in tests

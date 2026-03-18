@@ -428,6 +428,69 @@ No opener like "This tool..." — jump straight to what it does.
         return ""
 
 
+def summarize_instagram_post(
+    post: dict,
+    status_file: Path = Path.home() / ".research-dashboard" / "status.json",
+) -> str:
+    """Return a concise summary of an Instagram post from its transcript and key points.
+
+    Uses Haiku with caching. Returns empty string on failure.
+
+    Args:
+        post: Instagram post dict with transcript, key_points, name, account fields.
+        status_file: Path to status JSON for caching.
+
+    Returns:
+        Plain-text summary string, or empty string on error.
+    """
+    shortcode = post.get("shortcode", post.get("name", ""))
+    cache_key = _build_cache_key(shortcode, "", "ig_summary_v1")
+    cached = get_analysis_cache(cache_key, status_file)
+    if cached is not None:
+        return cached.get("response", "")
+
+    name = post.get("name", "")
+    account = post.get("account", "")
+    transcript = post.get("transcript", "")[:4000]
+    key_points = post.get("key_points", [])
+    kp_text = "\n".join(f"- {p}" for p in key_points) if key_points else ""
+
+    prompt = f"""\
+<context>
+Instagram video post from @{account}: "{name}"
+
+Key Points:
+{kp_text}
+
+Transcript (excerpt):
+{transcript}
+</context>
+
+<objective>
+Summarize the main insight or takeaway from this video post.
+</objective>
+
+<style>
+Plain English. 2–3 sentences. No bullet points.
+</style>
+
+<tone>
+Direct, informative. Skip filler.
+</tone>
+
+<response>
+2–3 sentences capturing the core message and why it matters.
+</response>"""
+
+    try:
+        result = _call_api(prompt, _HAIKU_MODEL, max_tokens=250)
+        set_analysis_cache(cache_key, result, status_file)
+        return result.get("response", "")
+    except Exception as exc:
+        logger.warning("summarize_instagram_post failed for %s: %s", shortcode, exc)
+        return ""
+
+
 def analyze_blog_potential(
     item: dict,
     status_file: Path = Path.home() / ".research-dashboard" / "status.json",
