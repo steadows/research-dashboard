@@ -122,14 +122,19 @@ def fetch_recent_posts(
         return []
 
     posts: list[dict[str, Any]] = []
+    _MAX_SCAN = 200  # Cap iteration — Instagram API order is not guaranteed
 
-    for post in profile.get_posts():
-        # Check date cutoff — posts are in reverse chronological order
+    for i, post in enumerate(profile.get_posts()):
+        if i >= _MAX_SCAN:
+            logger.info("Reached scan limit (%d posts), stopping", _MAX_SCAN)
+            break
+
+        # Check date cutoff — skip (don't break) since API order isn't reliable
         post_date = post.date_utc
         if not post_date.tzinfo:
             post_date = post_date.replace(tzinfo=timezone.utc)
         if post_date < cutoff:
-            break
+            continue
 
         # Skip already-ingested
         if post.shortcode in state:
