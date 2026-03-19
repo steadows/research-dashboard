@@ -504,7 +504,7 @@ def analyze_blog_potential(
     Returns:
         Analysis result dict with 'response', model, token, cost fields.
     """
-    cache_key = _build_cache_key(item["name"], "", "blog_potential_v2")
+    cache_key = _build_cache_key(item["name"], "", "blog_potential_v3")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached
@@ -581,7 +581,7 @@ def deep_read_paper(
     Returns:
         Multi-paragraph synthesis string, or empty string on error.
     """
-    cache_key = _build_cache_key(item["name"], "", "paper_deep_read_v2")
+    cache_key = _build_cache_key(item["name"], "", "paper_deep_read_v3")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")

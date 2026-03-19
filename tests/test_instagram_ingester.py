@@ -410,10 +410,10 @@ class TestWriteVaultNote:
 
         assert fm["title"] == "My Title"
         assert fm["shortcode"] == "YAML1"
-        assert fm["account"] == "user"
+        assert fm["account"] == "[[user]]"
         assert fm["date"] == "2026-03-15"
         assert fm["source_url"] == "https://instagram.com/p/YAML1"
-        assert "instagram" in fm["tags"]
+        assert fm["tags"] == []
 
     def test_body_sections(self, tmp_path: Path) -> None:
         """Written file contains ## Caption, Key Points, Keywords, Transcript sections."""

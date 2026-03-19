@@ -70,6 +70,10 @@ def parse_instagram_posts(
     accounts_lower = [a.lower() for a in accounts] if accounts else None
 
     for md_file in ig_dir.rglob("*.md"):
+        # Skip account hub pages (live directly in Instagram/, not in subdirs)
+        if md_file.parent == ig_dir:
+            continue
+
         try:
             content = md_file.read_text(encoding="utf-8")
             post = _parse_single_note(content, md_file)
@@ -130,9 +134,13 @@ def _parse_single_note(content: str, file_path: Path) -> dict[str, Any] | None:
     caption = section_map.get("Caption", "").strip()
     transcript = section_map.get("Transcript", "").strip()
 
+    # Strip wiki-link brackets from account field (e.g. "[[username]]" → "username")
+    raw_account = str(fm.get("account", ""))
+    account = raw_account.replace("[[", "").replace("]]", "").strip()
+
     return {
         "name": fm.get("title") or file_path.stem,
-        "account": fm.get("account", ""),
+        "account": account,
         "date": str(fm.get("date", "")),
         "source_url": fm.get("source_url", ""),
         "shortcode": fm.get("shortcode", ""),

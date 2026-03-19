@@ -3,6 +3,7 @@
 import html
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -43,19 +44,35 @@ def get_vault_path() -> Path:
     return Path(vault_str)
 
 
+_WIKI_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+
+
+def strip_wiki_links(text: str) -> str:
+    """Replace Obsidian ``[[Link]]`` and ``[[Link|Alias]]`` with display text.
+
+    Args:
+        text: Raw string possibly containing wiki-link syntax.
+
+    Returns:
+        String with wiki-link brackets removed, using alias if present.
+    """
+    return _WIKI_LINK_RE.sub(lambda m: m.group(2) or m.group(1), text)
+
+
 def safe_html(text: str) -> str:
     """Escape text for safe use in Streamlit unsafe_allow_html contexts.
 
-    Wraps html.escape() to prevent XSS when rendering vault-sourced
-    strings via st.markdown(unsafe_allow_html=True).
+    Strips Obsidian wiki-link brackets, then wraps html.escape() to prevent
+    XSS when rendering vault-sourced strings via
+    st.markdown(unsafe_allow_html=True).
 
     Args:
-        text: Raw text that may contain HTML special characters.
+        text: Raw text that may contain HTML special characters or wiki-links.
 
     Returns:
         HTML-escaped string safe for rendering.
     """
-    return html.escape(text, quote=True)
+    return html.escape(strip_wiki_links(text), quote=True)
 
 
 def safe_parse(

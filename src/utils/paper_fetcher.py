@@ -1,7 +1,10 @@
-"""Paper fetcher — retrieves paper context from Semantic Scholar by title.
+"""Paper fetcher — retrieves paper context from Semantic Scholar + OpenAlex.
 
-Uses the free Semantic Scholar Graph API (no key required).
-Fetches abstract, metadata, and full text (via open-access PDF or arXiv HTML).
+Primary: Semantic Scholar Graph API (supports optional API key via
+SEMANTIC_SCHOLAR_API_KEY env var for higher rate limits).
+Fallback: OpenAlex API (free, no key, generous rate limits).
+Full text: open-access PDF or arXiv HTML.
+
 Falls back gracefully on any failure so callers are never blocked.
 
 Paper cache is stored in ~/.research-dashboard/paper-cache/ as separate files
@@ -12,8 +15,10 @@ import hashlib
 import io
 import json
 import logging
+import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -24,11 +29,15 @@ from utils.status_tracker import get_analysis_cache, set_analysis_cache
 logger = logging.getLogger(__name__)
 
 _SEMANTIC_SCHOLAR_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+_OPENALEX_SEARCH_URL = "https://api.openalex.org/works"
 _FIELDS = "abstract,openAccessPdf,externalIds,year,venue,authors"
 _ABSTRACT_ONLY_FIELDS = "abstract,year,venue,authors"
 _CACHE_TYPE = "paper_abstract_v1"
 _REQUEST_TIMEOUT = 10.0  # seconds
 _FULL_TEXT_CAP = 30_000  # chars (~7.5K tokens)
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_BASE = 3.0  # seconds — exponential: 3, 6, 12
+_FAILED_CACHE_COOLDOWN = 300  # seconds — don't re-fetch failed papers for 5 min
 
 _DEFAULT_CACHE_DIR = Path.home() / ".research-dashboard" / "paper-cache"
 
@@ -113,6 +122,28 @@ def _read_paper_cache(
     )
 
 
+def _read_paper_cache_timestamp(
+    cache_key: str, cache_dir: Path = _DEFAULT_CACHE_DIR
+) -> float | None:
+    """Read the cached_at timestamp from a paper cache file.
+
+    Args:
+        cache_key: SHA-256 hex digest key.
+        cache_dir: Directory containing paper cache files.
+
+    Returns:
+        Unix timestamp float, or None if missing/unreadable.
+    """
+    meta_file = cache_dir / f"{cache_key}.json"
+    if not meta_file.is_file():
+        return None
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        return meta.get("cached_at")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def _write_paper_cache(
     cache_key: str, context: PaperContext, cache_dir: Path = _DEFAULT_CACHE_DIR
 ) -> None:
@@ -134,6 +165,7 @@ def _write_paper_cache(
         "authors": context["authors"],
         "fetch_state": context["fetch_state"],
         "error": context["error"],
+        "cached_at": time.time(),
     }
 
     meta_file = cache_dir / f"{cache_key}.json"
@@ -276,11 +308,21 @@ def fetch_paper_context(
 
     cache_key = _paper_cache_key(title)
 
-    # Check file cache
+    # Check file cache — serve hits, but retry "failed" entries after cooldown
     cached = _read_paper_cache(cache_key, cache_dir)
     if cached is not None:
-        logger.debug("Paper cache hit for: %s", title)
-        return cached
+        if cached["fetch_state"] != "failed":
+            logger.debug("Paper cache hit for: %s", title)
+            return cached
+        # For failed entries, check if cooldown has elapsed
+        cached_at = _read_paper_cache_timestamp(cache_key, cache_dir)
+        if cached_at and (time.time() - cached_at) < _FAILED_CACHE_COOLDOWN:
+            logger.debug(
+                "Paper cache cooldown active for: %s (retry in %ds)",
+                title,
+                int(_FAILED_CACHE_COOLDOWN - (time.time() - cached_at)),
+            )
+            return cached
 
     logger.info("Fetching paper context from Semantic Scholar: %s", title)
 
@@ -293,8 +335,210 @@ def fetch_paper_context(
         return context
 
 
+def _request_with_retry(
+    client: httpx.Client,
+    url: str,
+    params: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    """GET request with exponential backoff on 429 rate-limit responses.
+
+    Args:
+        client: Active httpx client.
+        url: Request URL.
+        params: Query parameters.
+        headers: Optional request headers (e.g. API key).
+
+    Returns:
+        Successful httpx.Response.
+
+    Raises:
+        httpx.HTTPStatusError: On non-429 errors or after all retries exhausted.
+    """
+    for attempt in range(_RETRY_ATTEMPTS):
+        response = client.get(url, params=params, headers=headers or {})
+        if response.status_code != 429:
+            response.raise_for_status()
+            return response
+
+        # Respect Retry-After header if present, otherwise use exponential backoff
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                wait = min(float(retry_after), 30.0)  # cap at 30s
+            except ValueError:
+                wait = _RETRY_BACKOFF_BASE * (2**attempt)
+        else:
+            wait = _RETRY_BACKOFF_BASE * (2**attempt)
+
+        logger.warning(
+            "Semantic Scholar 429 rate limit — retrying in %.0fs (attempt %d/%d)",
+            wait,
+            attempt + 1,
+            _RETRY_ATTEMPTS,
+        )
+        time.sleep(wait)
+
+    # Final attempt — let it raise naturally if still 429
+    response = client.get(url, params=params, headers=headers or {})
+    response.raise_for_status()
+    return response
+
+
+def _get_semantic_scholar_headers() -> dict[str, str]:
+    """Build request headers, including API key if configured.
+
+    Set SEMANTIC_SCHOLAR_API_KEY env var for higher rate limits (100 req/sec).
+    Free keys available at https://www.semanticscholar.org/product/api#api-key
+    """
+    api_key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+    if api_key:
+        return {"x-api-key": api_key}
+    return {}
+
+
+def _fetch_from_semantic_scholar(
+    title: str, client: httpx.Client
+) -> dict[str, Any] | None:
+    """Query Semantic Scholar and return the top paper dict, or None on failure.
+
+    Args:
+        title: Paper title to search.
+        client: Active httpx client.
+
+    Returns:
+        Top paper dict from Semantic Scholar, or None if rate-limited/no results.
+    """
+    params = {"query": title, "fields": _FIELDS, "limit": 1}
+    headers = _get_semantic_scholar_headers()
+    try:
+        response = _request_with_retry(
+            client, _SEMANTIC_SCHOLAR_URL, params, headers=headers
+        )
+        data = response.json()
+        papers = data.get("data", [])
+        return papers[0] if papers else None
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            logger.warning("Semantic Scholar rate-limited, falling back to OpenAlex")
+            return None
+        raise
+
+
+def _fetch_from_openalex(
+    title: str, client: httpx.Client
+) -> dict[str, Any] | None:
+    """Query OpenAlex as fallback and return a Semantic Scholar-shaped paper dict.
+
+    OpenAlex is free with no API key and generous rate limits (10 req/sec polite,
+    100K/day). We reshape the response to match the Semantic Scholar format so
+    downstream code is unaffected.
+
+    Args:
+        title: Paper title to search.
+        client: Active httpx client.
+
+    Returns:
+        Paper dict shaped like Semantic Scholar output, or None on failure.
+    """
+    params = {
+        "search": title,
+        "per_page": 1,
+        "select": "title,doi,publication_year,primary_location,authorships,"
+        "open_access,abstract_inverted_index",
+    }
+    # Polite pool: include mailto for better rate limits
+    headers = {"User-Agent": "ResearchDashboard/1.0 (mailto:polite@example.com)"}
+    try:
+        response = client.get(
+            _OPENALEX_SEARCH_URL, params=params, headers=headers, timeout=_REQUEST_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        work = results[0]
+        return _openalex_to_paper_dict(work)
+    except Exception as exc:
+        logger.warning("OpenAlex fallback failed: %s", exc)
+        return None
+
+
+def _openalex_to_paper_dict(work: dict[str, Any]) -> dict[str, Any]:
+    """Convert an OpenAlex work object to Semantic Scholar paper dict format.
+
+    Args:
+        work: OpenAlex work dict.
+
+    Returns:
+        Dict matching the Semantic Scholar paper shape used downstream.
+    """
+    # Reconstruct abstract from inverted index
+    abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
+
+    # Extract authors
+    authors = [
+        {"name": a.get("author", {}).get("display_name", "")}
+        for a in (work.get("authorships") or [])
+    ]
+
+    # Extract venue from primary location
+    primary = work.get("primary_location") or {}
+    source = primary.get("source") or {}
+    venue = source.get("display_name") or ""
+
+    # Open access PDF
+    oa = work.get("open_access") or {}
+    oa_url = oa.get("oa_url") or ""
+    open_access_pdf = {"url": oa_url} if oa_url else None
+
+    # External IDs (for arXiv fallback)
+    doi = work.get("doi") or ""
+    external_ids = {}
+    if doi:
+        external_ids["DOI"] = doi.replace("https://doi.org/", "")
+    # Check if arXiv by looking at the primary location
+    if primary.get("source", {}).get("display_name", "").lower() == "arxiv":
+        # Extract arXiv ID from doi or landing_page_url
+        landing = primary.get("landing_page_url") or ""
+        arxiv_match = re.search(r"arxiv\.org/abs/(\d+\.\d+)", landing)
+        if arxiv_match:
+            external_ids["ArXiv"] = arxiv_match.group(1)
+
+    return {
+        "abstract": abstract,
+        "year": work.get("publication_year"),
+        "venue": venue,
+        "authors": authors,
+        "openAccessPdf": open_access_pdf,
+        "externalIds": external_ids,
+    }
+
+
+def _reconstruct_abstract(inverted_index: dict[str, list[int]] | None) -> str:
+    """Reconstruct abstract text from OpenAlex inverted index format.
+
+    Args:
+        inverted_index: Dict mapping words to their position indices.
+
+    Returns:
+        Reconstructed abstract string, or empty string if unavailable.
+    """
+    if not inverted_index:
+        return ""
+    # Build position → word mapping
+    positions: list[tuple[int, str]] = []
+    for word, indices in inverted_index.items():
+        for idx in indices:
+            positions.append((idx, word))
+    positions.sort(key=lambda x: x[0])
+    return " ".join(word for _, word in positions)
+
+
 def _fetch_and_cache_paper(title: str, cache_key: str, cache_dir: Path) -> PaperContext:
-    """Execute Semantic Scholar query and full text extraction pipeline.
+    """Fetch paper metadata: Semantic Scholar first, OpenAlex fallback on 429.
 
     Args:
         title: Paper title to search.
@@ -304,26 +548,24 @@ def _fetch_and_cache_paper(title: str, cache_key: str, cache_dir: Path) -> Paper
     Returns:
         Populated PaperContext.
     """
-    params = {
-        "query": title,
-        "fields": _FIELDS,
-        "limit": 1,
-    }
-
     with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
-        response = client.get(_SEMANTIC_SCHOLAR_URL, params=params)
-        response.raise_for_status()
+        # Try Semantic Scholar first
+        top = _fetch_from_semantic_scholar(title, client)
 
-        data = response.json()
-        papers = data.get("data", [])
+        # Fallback to OpenAlex if Semantic Scholar failed (rate limit) or no results
+        source_api = "semantic_scholar"
+        if top is None:
+            top = _fetch_from_openalex(title, client)
+            source_api = "openalex"
 
-        if not papers:
-            logger.debug("No Semantic Scholar results for: %s", title)
+        if not top:
+            logger.debug("No results from any API for: %s", title)
             context = _empty_context(fetch_state="not_found")
             _write_paper_cache(cache_key, context, cache_dir)
             return context
 
-        top = papers[0]
+        logger.info("Paper metadata from %s: %s", source_api, title)
+
         abstract = top.get("abstract") or ""
         year = str(top.get("year") or "")
         venue = top.get("venue") or ""
@@ -476,9 +718,11 @@ def _query_semantic_scholar(title: str) -> str:
         "fields": _ABSTRACT_ONLY_FIELDS,
         "limit": 1,
     }
+    headers = _get_semantic_scholar_headers()
     with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
-        response = client.get(_SEMANTIC_SCHOLAR_URL, params=params)
-        response.raise_for_status()
+        response = _request_with_retry(
+            client, _SEMANTIC_SCHOLAR_URL, params, headers=headers
+        )
 
     data = response.json()
     papers = data.get("data", [])

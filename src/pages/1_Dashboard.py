@@ -868,7 +868,7 @@ def _render_signal_entry(signal: dict[str, str]) -> None:
 
 
 def _render_agentic_hub_tab(posts: list[dict[str, Any]]) -> None:
-    """Render Agentic Hub tab with instagram post cards and account filter."""
+    """Render Agentic Hub tab with instagram post cards, filters, and refresh."""
     st.subheader("🤖 Agentic Hub")
 
     if not posts:
@@ -878,25 +878,48 @@ def _render_agentic_hub_tab(posts: list[dict[str, Any]]) -> None:
         )
         return
 
-    # Account filter pills
+    # --- Filter bar: account dropdown, date filter, refresh button ---
     sorted_accounts = sorted({p["account"] for p in posts})
-    filter_options = ["All"] + sorted_accounts
+    account_options = ["All accounts"] + sorted_accounts
+    date_options = ["All time", "This week", "This month", "This year"]
 
-    filter_key = "dashboard__agentic_hub_account_filter"
-    if filter_key not in st.session_state:
-        st.session_state[filter_key] = "All"
+    col_account, col_date, col_refresh = st.columns([2, 2, 1])
 
-    _render_account_pills(filter_options, filter_key)
+    with col_account:
+        selected_account = st.selectbox(
+            "Account",
+            account_options,
+            key="dashboard__agentic_hub_account_filter",
+            label_visibility="collapsed",
+        )
 
-    # Filter posts by selected account
-    selected = st.session_state[filter_key]
+    with col_date:
+        selected_date = st.selectbox(
+            "Date range",
+            date_options,
+            key="dashboard__agentic_hub_date_filter",
+            label_visibility="collapsed",
+        )
+
+    with col_refresh:
+        if st.button("🔄 Refresh", key="dashboard__agentic_hub_refresh"):
+            _run_ingester_refresh(sorted_accounts)
+
+    # Filter by account
     filtered = (
-        posts if selected == "All" else [p for p in posts if p["account"] == selected]
+        posts
+        if selected_account == "All accounts"
+        else [p for p in posts if p["account"] == selected_account]
     )
 
+    # Filter by date range
+    filtered = _filter_by_date_range(filtered, selected_date)
+
     if not filtered:
-        st.info("No posts match the selected account.")
+        st.info("No posts match the selected filters.")
         return
+
+    st.caption(f"{len(filtered)} posts")
 
     # Render post cards
     wb_items = get_workbench_items()
@@ -904,26 +927,69 @@ def _render_agentic_hub_tab(posts: list[dict[str, Any]]) -> None:
         _render_post_card(post, wb_items)
 
 
-def _render_account_pills(options: list[str], filter_key: str) -> None:
-    """Render account filter as pill buttons with amber active highlight."""
-    current = st.session_state.get(filter_key, "All")
-    cols = st.columns(len(options))
-    for i, option in enumerate(options):
-        with cols[i]:
-            is_active = option == current
-            border = "2px solid #F59E0B" if is_active else "1px solid #1F2937"
-            if st.button(
-                option,
-                key=f"dashboard__agentic_hub_pill_{option}",
-                use_container_width=True,
-            ):
-                st.session_state[filter_key] = option
-                st.rerun()
-            if is_active:
-                st.markdown(
-                    f'<div style="margin-top:-12px;border-bottom:{border};"></div>',
-                    unsafe_allow_html=True,
-                )
+def _filter_by_date_range(
+    posts: list[dict[str, Any]], date_range: str
+) -> list[dict[str, Any]]:
+    """Filter posts by date range relative to today.
+
+    Args:
+        posts: List of post dicts with 'date' key (YYYY-MM-DD string).
+        date_range: One of 'All time', 'This week', 'This month', 'This year'.
+
+    Returns:
+        Filtered list of posts.
+    """
+    if date_range == "All time":
+        return posts
+
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    if date_range == "This week":
+        cutoff = today - timedelta(days=today.weekday())  # Monday
+    elif date_range == "This month":
+        cutoff = today.replace(day=1)
+    elif date_range == "This year":
+        cutoff = today.replace(month=1, day=1)
+    else:
+        return posts
+
+    cutoff_str = cutoff.isoformat()
+    return [p for p in posts if p.get("date", "") >= cutoff_str]
+
+
+def _run_ingester_refresh(accounts: list[str]) -> None:
+    """Run the instagram ingester for all known accounts.
+
+    Args:
+        accounts: List of account usernames to refresh.
+    """
+    from utils.instagram_ingester import run_ingestion
+
+    vault_path = get_vault_path()
+    total = 0
+
+    progress = st.progress(0, text="Refreshing Instagram feeds…")
+    for i, account in enumerate(accounts):
+        progress.progress(
+            (i + 1) / len(accounts),
+            text=f"Ingesting {account}…",
+        )
+        try:
+            results = run_ingestion(account, vault_path, days=14)
+            total += len(results)
+        except Exception as exc:
+            logger.warning("Ingester refresh failed for %s: %s", account, exc)
+
+    progress.empty()
+
+    if total > 0:
+        st.toast(f"Ingested {total} new posts across {len(accounts)} accounts")
+        _load_instagram_posts.clear()
+        st.rerun()
+    else:
+        st.toast("No new posts found")
 
 
 def _render_post_card(

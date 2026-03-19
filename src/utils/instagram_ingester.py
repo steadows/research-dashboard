@@ -30,7 +30,10 @@ _SAFE_SHORTCODE_RE = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 _TERM_CORRECTIONS: dict[str, str] = {
+    "CloudCode": "Claude Code",
     "Cloud Code": "Claude Code",
+    "Cloud code": "Claude Code",
+    "cloud code": "Claude Code",
     "Cloud Agents": "Claude Agents",
     "Cloud Agent": "Claude Agent",
     "Clod": "Claude",
@@ -259,7 +262,12 @@ Return ONLY the JSON object, no other text."""
 
     try:
         response = claude_client.call_haiku_json(prompt)
-        parsed = json.loads(response)
+        # Strip markdown code fences that Haiku sometimes wraps around JSON
+        stripped = response.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[1] if "\n" in stripped else stripped
+            stripped = stripped.rsplit("```", 1)[0].strip()
+        parsed = json.loads(stripped)
         return {
             "title": parsed.get("title", caption[:60] if caption else "Instagram Post"),
             "key_points": parsed.get("key_points", []),
@@ -318,10 +326,9 @@ def write_vault_note(
     content = f"""\
 ---
 title: '{safe_title}'
-tags:
-  - instagram
+tags: []
 date: '{post["date"]}'
-account: {post["username"]}
+account: '[[{post["username"]}]]'
 shortcode: {post["shortcode"]}
 source_url: {post["url"]}
 ---
@@ -355,6 +362,61 @@ source_url: {post["url"]}
     return output_path
 
 
+def ensure_account_hub_page(username: str, vault_path: Path) -> Path:
+    """Create an Obsidian hub page for an Instagram account if it doesn't exist.
+
+    The hub page lives at Research/Instagram/{username}.md and acts as a
+    central node in Obsidian's graph view. All post notes wiki-link to this
+    page via ``account: '[[username]]'`` in their frontmatter.
+
+    Args:
+        username: Instagram username (already validated by caller).
+        vault_path: Root path to the Obsidian vault.
+
+    Returns:
+        Path to the account hub page.
+    """
+    hub_dir = vault_path / "Research" / "Instagram"
+    hub_dir.mkdir(parents=True, exist_ok=True)
+    hub_path = hub_dir / f"{username}.md"
+
+    if hub_path.exists():
+        return hub_path
+
+    today = datetime.now(tz=timezone.utc).date().isoformat()
+    content = f"""\
+---
+tags:
+  - instagram
+  - account
+type: account-hub
+account: {username}
+created: '{today}'
+---
+
+# {username}
+
+Instagram account hub. All ingested video notes for this account link here
+via the `account` frontmatter field, making this node the centre of the
+account's cluster in Obsidian's graph view.
+"""
+
+    fd, tmp_path = tempfile.mkstemp(dir=hub_dir, suffix=".tmp", prefix=".ig_hub_")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, hub_path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    logger.info("Created account hub page: %s", hub_path)
+    return hub_path
+
+
 def run_ingestion(
     username: str,
     vault_path: Path,
@@ -380,6 +442,9 @@ def run_ingestion(
     # Validate username to prevent path traversal (CWE-22)
     if not _SAFE_USERNAME_RE.match(username):
         raise ValueError(f"Invalid Instagram username: {username!r}")
+
+    # Ensure the account hub page exists so Obsidian graph shows it as a node
+    ensure_account_hub_page(username, vault_path)
 
     projects = known_projects if known_projects is not None else []
     download_dir = Path(tempfile.mkdtemp(prefix="ig_ingest_"))
@@ -420,5 +485,16 @@ def run_ingestion(
     finally:
         # Clean up download directory
         shutil.rmtree(download_dir, ignore_errors=True)
+
+    # Post-ingestion: inject wiki-links to connect notes to the knowledge graph
+    if written:
+        try:
+            from utils.knowledge_linker import build_entity_index, link_note
+
+            entities = build_entity_index(vault_path)
+            linked = sum(1 for p in written if link_note(p, entities))
+            logger.info("Knowledge linker: linked %d / %d new notes", linked, len(written))
+        except Exception as exc:
+            logger.warning("Knowledge linker failed (non-fatal): %s", exc)
 
     return written

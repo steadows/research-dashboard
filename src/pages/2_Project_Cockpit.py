@@ -161,13 +161,9 @@ def _render_project_header(
         vault_name: Vault directory name for Obsidian URL.
         gsd_plan_text: Pre-loaded GSD plan content, or None to load on demand.
     """
-    name = safe_html(project["name"])
     status = safe_html(project.get("status", ""))
     domain = safe_html(project.get("domain", ""))
     tech_list = project.get("tech", [])
-
-    # Header row
-    st.markdown(f"## {name}")
 
     # Badges row
     badge_parts = []
@@ -278,7 +274,10 @@ def _render_item_card(
     current_status: str,
     project: dict[str, Any] | None = None,
 ) -> None:
-    """Render a single full-width item card with source badge and status/dismiss row.
+    """Render item card with description, quick analysis, actions — all in one container.
+
+    The card contains: header + description, quick analyze button + cached result,
+    and the action row (status, workbench, dismiss). Go deep is rendered separately.
 
     Args:
         item: Item dict from the project index.
@@ -287,57 +286,77 @@ def _render_item_card(
         project: Optional project dict — used to attach source_dir when
             sending items to the workbench.
     """
-    card_html = _render_item_card_header(item)
-    card_html += _render_item_card_body(item)
-    card_html += "</div>"
-    st.markdown(card_html, unsafe_allow_html=True)
+    source_type = item.get("source_type", "item")
+    item_name = item["name"]
 
-    # Action row: status selector + workbench + dismiss
-    col_status, col_workbench, col_dismiss = st.columns([2, 1, 1])
+    with st.container(border=True):
+        # Card header + body (description)
+        card_html = _render_item_card_header(item)
+        card_html += _render_item_card_body(item)
+        card_html += "</div>"
+        st.markdown(card_html, unsafe_allow_html=True)
 
-    with col_status:
-        safe_idx = (
-            _ITEM_STATUS_OPTIONS.index(current_status)
-            if current_status in _ITEM_STATUS_OPTIONS
-            else 0
-        )
-        new_status = st.selectbox(
-            "Status",
-            _ITEM_STATUS_OPTIONS,
-            index=safe_idx,
-            key=f"cockpit__item_status_{item.get('source_type', 'item')}_{item['name']}",
-            label_visibility="collapsed",
-        )
-        if new_status != current_status:
-            set_item_status(item_id, new_status, _STATUS_FILE)
+        # Quick analyze button + inline result
+        if project is not None:
+            quick_key = hashlib.sha256(
+                f"{item_name}:{project['name']}:quick".encode()
+            ).hexdigest()
 
-    with col_workbench:
-        disabled = current_status == "workbench"
-        if st.button(
-            "🔬 Workbench",
-            key=f"cockpit__item_workbench_{item.get('source_type', 'item')}_{item['name']}",
-            disabled=disabled,
-            use_container_width=True,
-        ):
-            # Attach project source_dir so the research agent can explore it
-            wb_item = {**item}
-            if project:
-                source_dir = project.get("source_dir", "")
-                if source_dir:
-                    wb_item["project_dir"] = str(Path(source_dir).expanduser())
-                    wb_item["project_name"] = project.get("name", "")
-            add_to_workbench(wb_item, previous_status=current_status)
-            set_item_status(item_id, "workbench", _STATUS_FILE)
-            st.rerun()
+            if st.button(
+                "Analyze",
+                key=f"cockpit__analyze_{source_type}_{item_name}",
+                icon=":material/bolt:",
+                use_container_width=True,
+            ):
+                _run_analysis(analyze_item_quick, item, project, "Quick analysis")
+            else:
+                _show_cached_result(quick_key, "Quick analysis")
 
-    with col_dismiss:
-        if st.button(
-            "🗃️ Dismiss",
-            key=f"cockpit__item_dismiss_{item.get('source_type', 'item')}_{item['name']}",
-            use_container_width=True,
-        ):
-            set_item_status(item_id, "dismissed", _STATUS_FILE)
-            st.rerun()
+        # Action row: status selector + workbench + dismiss
+        col_status, col_workbench, col_dismiss = st.columns([2, 1, 1])
+
+        with col_status:
+            safe_idx = (
+                _ITEM_STATUS_OPTIONS.index(current_status)
+                if current_status in _ITEM_STATUS_OPTIONS
+                else 0
+            )
+            new_status = st.selectbox(
+                "Status",
+                _ITEM_STATUS_OPTIONS,
+                index=safe_idx,
+                key=f"cockpit__item_status_{source_type}_{item_name}",
+                label_visibility="collapsed",
+            )
+            if new_status != current_status:
+                set_item_status(item_id, new_status, _STATUS_FILE)
+
+        with col_workbench:
+            disabled = current_status == "workbench"
+            if st.button(
+                "🔬 Workbench",
+                key=f"cockpit__item_workbench_{source_type}_{item_name}",
+                disabled=disabled,
+                use_container_width=True,
+            ):
+                wb_item = {**item}
+                if project:
+                    source_dir = project.get("source_dir", "")
+                    if source_dir:
+                        wb_item["project_dir"] = str(Path(source_dir).expanduser())
+                        wb_item["project_name"] = project.get("name", "")
+                add_to_workbench(wb_item, previous_status=current_status)
+                set_item_status(item_id, "workbench", _STATUS_FILE)
+                st.rerun()
+
+        with col_dismiss:
+            if st.button(
+                "🗃️ Dismiss",
+                key=f"cockpit__item_dismiss_{source_type}_{item_name}",
+                use_container_width=True,
+            ):
+                set_item_status(item_id, "dismissed", _STATUS_FILE)
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +456,7 @@ def _render_flagged_items(
             st.rerun()
 
     _render_item_card(item, item_id, current_status, project=project)
-    _render_analysis_buttons(item, project, idx)
+    _render_deep_analysis(item, project)
 
 
 # ---------------------------------------------------------------------------
@@ -445,54 +464,32 @@ def _render_flagged_items(
 # ---------------------------------------------------------------------------
 
 
-def _render_analysis_buttons(
+def _render_deep_analysis(
     item: dict[str, Any],
     project: dict[str, Any],
-    idx: int,
 ) -> None:
-    """Render Analyze (quick) and Go Deep buttons with cached results.
-
-    Full-width single-item layout — results render below with room to breathe.
+    """Render Go Deep button and its result below the item card.
 
     Args:
         item: Item dict.
         project: Project dict.
-        idx: Unused; kept for call-site compatibility.
     """
     source_type = item.get("source_type", "item")
     item_name = item["name"]
 
-    # Build cache keys for display check
-    quick_key = hashlib.sha256(
-        f"{item_name}:{project['name']}:quick".encode()
-    ).hexdigest()
     deep_key = hashlib.sha256(
         f"{item_name}:{project['name']}:deep".encode()
     ).hexdigest()
 
-    col_quick, col_deep = st.columns(2)
-
-    with col_quick:
-        if st.button(
-            "Analyze",
-            key=f"cockpit__analyze_{source_type}_{item_name}",
-            icon=":material/bolt:",
-            use_container_width=True,
-        ):
-            _run_analysis(analyze_item_quick, item, project, "Quick analysis")
-        else:
-            _show_cached_result(quick_key, "Quick analysis")
-
-    with col_deep:
-        if st.button(
-            "Go deep",
-            key=f"cockpit__deep_{source_type}_{item_name}",
-            icon=":material/psychology:",
-            use_container_width=True,
-        ):
-            _run_analysis(analyze_item_deep, item, project, "Deep analysis")
-        else:
-            _show_cached_result(deep_key, "Deep analysis")
+    if st.button(
+        "Go deep",
+        key=f"cockpit__deep_{source_type}_{item_name}",
+        icon=":material/psychology:",
+        use_container_width=True,
+    ):
+        _run_analysis(analyze_item_deep, item, project, "Deep analysis")
+    else:
+        _show_cached_result(deep_key, "Deep analysis")
 
 
 def _run_analysis(
@@ -687,15 +684,19 @@ def _run_cockpit() -> None:
         "gsd_plan": combined_gsd_context,
     }
 
-    # Project header
-    _render_project_header(project, vault_path, vault_name, combined_plan_text)
-
-    # Context sources transparency expander
-    _render_context_sources(project, vault_path, plan_files, enriched_project)
+    # Project name at top, flagged items next (highest value), metadata at bottom
+    st.markdown(f"## {safe_html(project['name'])}")
 
     # Flagged items feed
     items = project_index.get(selected_name, [])
     _render_flagged_items(items, enriched_project)
+
+    # Project metadata and context below the feed
+    st.divider()
+    _render_project_header(project, vault_path, vault_name, combined_plan_text)
+
+    # Context sources transparency expander
+    _render_context_sources(project, vault_path, plan_files, enriched_project)
 
 
 _run_cockpit()
