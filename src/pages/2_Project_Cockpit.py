@@ -5,14 +5,13 @@ a flagged items feed, and Analyze/Go Deep buttons for Claude API analysis.
 All vault-sourced strings are escaped via safe_html() before unsafe_allow_html.
 """
 
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
-from utils.claude_client import analyze_item_deep, analyze_item_quick
+from utils.claude_client import _build_cache_key, analyze_item_deep, analyze_item_quick
 from utils.cockpit_components import (
     build_obsidian_url,
     extract_gsd_context,
@@ -28,7 +27,7 @@ from utils.page_helpers import (
     safe_html,
     safe_parse,
 )
-from utils.smart_matcher import build_smart_project_index
+from utils.smart_matcher import build_smart_project_index, get_graph_linked_items
 from utils.status_tracker import load_status, set_item_status
 from utils.graph_engine import (
     build_vault_graph,
@@ -87,6 +86,33 @@ def _load_graph_context_data(vault_path_str: str) -> dict:
         "communities": [list(c) for c in communities],
         "node_count": G.number_of_nodes(),
     }
+
+
+def _load_project_graph_context(
+    vault_path_str: str, project_name: str
+) -> dict[str, Any] | None:
+    """Load per-project graph context, reusing Session 15 cached loaders.
+
+    Does NOT recompute the graph pipeline per project — graph, metrics, and
+    communities are cached at the vault level. Only the per-project slice is
+    derived per call (cheap dict lookups + sort).
+
+    Args:
+        vault_path_str: Vault path string.
+        project_name: Name of the selected project.
+
+    Returns:
+        Graph context dict with ``node_count``, or ``None`` if not in graph.
+    """
+    G = _load_vault_graph(vault_path_str)
+    graph_data = _load_graph_context_data(vault_path_str)
+    metrics = graph_data["metrics"]
+    communities = [frozenset(c) for c in graph_data["communities"]]
+    node_count = graph_data["node_count"]
+    ctx = get_project_context(G, metrics, communities, project_name)
+    if ctx is None:
+        return None
+    return {**ctx, "node_count": node_count}
 
 
 # ---------------------------------------------------------------------------
@@ -255,10 +281,26 @@ def _render_item_card_header(item: dict[str, Any]) -> str:
         f"<strong>{name}</strong>"
     )
 
-    # Inferred match indicator
+    # Discovery-source badges (Session 16)
+    discovery_source = item.get("discovery_source")
+    via_project = item.get("via_project")
+    if discovery_source == "community" and via_project:
+        header += (
+            f' <span style="background:#1F2937;color:#3B82F6;padding:1px 6px;'
+            f'border-radius:3px;font-size:0.65rem;margin-left:4px">'
+            f"via {safe_html(via_project)}</span>"
+        )
+    elif discovery_source == "suggested" and via_project:
+        header += (
+            f' <span style="background:#1F2937;color:#F59E0B;padding:1px 6px;'
+            f'border-radius:3px;font-size:0.65rem;margin-left:4px">'
+            f"via {safe_html(via_project)}</span>"
+        )
+
+    # Inferred match indicator (for directly linked items only)
     match_type = item.get("match_type", "explicit")
     confidence = item.get("confidence", 1.0)
-    if match_type == "inferred":
+    if match_type == "inferred" and discovery_source in (None, "linked"):
         header += (
             f' <span style="background:#374151;color:#9CA3AF;padding:1px 6px;'
             f'border-radius:3px;font-size:0.65rem;margin-left:4px">'
@@ -299,6 +341,8 @@ def _render_item_card(
     item_id: str,
     current_status: str,
     project: dict[str, Any] | None = None,
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> None:
     """Render item card with description, quick analysis, actions — all in one container.
 
@@ -311,6 +355,7 @@ def _render_item_card(
         current_status: Current status string.
         project: Optional project dict — used to attach source_dir when
             sending items to the workbench.
+        graph_context: Optional graph context for analysis threading.
     """
     source_type = item.get("source_type", "item")
     item_name = item["name"]
@@ -324,9 +369,12 @@ def _render_item_card(
 
         # Quick analyze button + inline result
         if project is not None:
-            quick_key = hashlib.sha256(
-                f"{item_name}:{project['name']}:quick".encode()
-            ).hexdigest()
+            quick_key = _build_cache_key(
+                item_name,
+                project["name"],
+                "quick",
+                has_graph=graph_context is not None,
+            )
 
             if st.button(
                 "Analyze",
@@ -334,7 +382,13 @@ def _render_item_card(
                 icon=":material/bolt:",
                 use_container_width=True,
             ):
-                _run_analysis(analyze_item_quick, item, project, "Quick analysis")
+                _run_analysis(
+                    analyze_item_quick,
+                    item,
+                    project,
+                    "Quick analysis",
+                    graph_context=graph_context,
+                )
             else:
                 _show_cached_result(quick_key, "Quick analysis")
 
@@ -393,6 +447,8 @@ def _render_item_card(
 def _render_flagged_items(
     items: list[dict[str, Any]],
     project: dict[str, Any],
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> None:
     """Render the flagged items feed as a single-item navigator.
 
@@ -402,6 +458,7 @@ def _render_flagged_items(
     Args:
         items: List of item dicts for the selected project.
         project: Project dict for analysis context.
+        graph_context: Optional graph context for analysis threading.
     """
     st.subheader("Flagged items")
 
@@ -471,7 +528,7 @@ def _render_flagged_items(
         st.markdown(
             f'<div style="text-align:center;color:#6B7280;padding:6px 0">'
             f"{idx + 1} of {len(filtered)}"
-            f' · <span style="color:#9CA3AF">{current_status}</span></div>',
+            f' · <span style="color:#9CA3AF">{safe_html(current_status)}</span></div>',
             unsafe_allow_html=True,
         )
     with nav_right:
@@ -481,8 +538,10 @@ def _render_flagged_items(
             st.session_state[idx_key] = idx + 1
             st.rerun()
 
-    _render_item_card(item, item_id, current_status, project=project)
-    _render_deep_analysis(item, project)
+    _render_item_card(
+        item, item_id, current_status, project=project, graph_context=graph_context
+    )
+    _render_deep_analysis(item, project, graph_context=graph_context)
 
 
 # ---------------------------------------------------------------------------
@@ -493,19 +552,25 @@ def _render_flagged_items(
 def _render_deep_analysis(
     item: dict[str, Any],
     project: dict[str, Any],
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> None:
     """Render Go Deep button and its result below the item card.
 
     Args:
         item: Item dict.
         project: Project dict.
+        graph_context: Optional graph context for analysis threading.
     """
     source_type = item.get("source_type", "item")
     item_name = item["name"]
 
-    deep_key = hashlib.sha256(
-        f"{item_name}:{project['name']}:deep".encode()
-    ).hexdigest()
+    deep_key = _build_cache_key(
+        item_name,
+        project["name"],
+        "deep",
+        has_graph=graph_context is not None,
+    )
 
     if st.button(
         "Go deep",
@@ -513,7 +578,13 @@ def _render_deep_analysis(
         icon=":material/psychology:",
         use_container_width=True,
     ):
-        _run_analysis(analyze_item_deep, item, project, "Deep analysis")
+        _run_analysis(
+            analyze_item_deep,
+            item,
+            project,
+            "Deep analysis",
+            graph_context=graph_context,
+        )
     else:
         _show_cached_result(deep_key, "Deep analysis")
 
@@ -523,6 +594,8 @@ def _run_analysis(
     item: dict[str, Any],
     project: dict[str, Any],
     label: str,
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> None:
     """Run an analysis function with user-friendly error handling.
 
@@ -531,11 +604,14 @@ def _run_analysis(
         item: Item dict.
         project: Project dict.
         label: Display label (e.g. "Quick analysis").
+        graph_context: Optional graph context for vault network intelligence.
     """
     spinner_msg = "Analyzing..." if "Quick" in label else "Deep analysis in progress..."
     try:
         with st.spinner(spinner_msg):
-            result = analysis_fn(item, project, _STATUS_FILE)
+            result = analysis_fn(
+                item, project, _STATUS_FILE, graph_context=graph_context
+            )
         _render_analysis_result(result, label)
     except ValueError:
         st.error(EMPTY_NO_API_KEY)
@@ -668,69 +744,56 @@ _DIRECTION_ICONS: dict[str, str] = {
 }
 
 
-def _render_graph_context(project_name: str, vault_str: str) -> None:
+def _render_graph_context(graph_ctx: dict[str, Any] | None) -> None:
     """Render per-project graph context panel inside an expander.
 
     Shows centrality rank, nearest neighbors, community membership,
-    and suggested connections from the vault knowledge graph.
+    and suggested connections from the pre-computed graph context.
 
     Args:
-        project_name: Name of the selected project.
-        vault_str: Vault path string for cached loaders.
+        graph_ctx: Pre-computed graph context dict, or None.
     """
-    graph_data = safe_parse(
-        _load_graph_context_data, vault_str, fallback=None, label="graph context"
-    )
-    if graph_data is None:
-        st.info("No graph data available.")
-        return
-
-    G = _load_vault_graph(vault_str)
-    metrics = graph_data["metrics"]
-    communities_raw = graph_data["communities"]
-    communities = [frozenset(c) for c in communities_raw]
-    node_count = graph_data["node_count"]
-
-    ctx = get_project_context(G, metrics, communities, project_name)
-    if ctx is None:
+    if graph_ctx is None:
         st.info("No graph data for this project.")
         return
+
+    node_count = graph_ctx.get("node_count", 0)
 
     # --- Centrality ---
     st.markdown("**Centrality**")
     st.metric(
         label="PageRank rank",
-        value=f"#{ctx['centrality_rank']} of {node_count}",
+        value=f"#{graph_ctx.get('centrality_rank', '?')} of {node_count}",
     )
 
     # --- Nearest neighbors ---
     st.markdown("**Nearest neighbors**")
-    neighbors = ctx["neighbors"][:5]
+    neighbors = graph_ctx.get("neighbors", [])[:5]
     if neighbors:
         for nb in neighbors:
             icon = _DIRECTION_ICONS.get(nb["direction"], "")
-            st.caption(f"{icon} {safe_html(nb['name'])}")
+            st.caption(f"{icon} {nb.get('name', '')}")
     else:
         st.caption("No direct connections.")
 
     # --- Community ---
     st.markdown("**Community**")
-    community_members = ctx.get("community_members")
+    community_members = graph_ctx.get("community_members")
     if community_members:
         member_count = len(community_members)
         st.caption(f"Part of a cluster with {member_count} notes")
         with st.expander("Cluster members", expanded=False):
             for member in sorted(community_members):
-                st.caption(safe_html(member))
+                st.caption(member)
     else:
         st.caption("Not assigned to any community.")
 
     # --- Suggested connections ---
     st.markdown("**Suggested connections**")
-    suggested = ctx.get("suggested_connections", [])[:5]
+    suggested = graph_ctx.get("suggested_connections", [])[:5]
     if suggested:
         for name, score in suggested:
-            st.caption(f"{safe_html(name)} — Adamic-Adar {score:.2f}")
+            st.caption(f"{name} — Adamic-Adar {score:.2f}")
     else:
         st.caption("No link suggestions available.")
 
@@ -788,12 +851,27 @@ def _run_cockpit() -> None:
         "gsd_plan": combined_gsd_context,
     }
 
+    # Load graph context for this project
+    graph_ctx = safe_parse(
+        _load_project_graph_context,
+        vault_str,
+        selected_name,
+        fallback=None,
+        label="project graph context",
+    )
+
     # Project name at top, flagged items next (highest value), metadata at bottom
     st.markdown(f"## {safe_html(project['name'])}")
 
-    # Flagged items feed
+    # Graph-powered item discovery (Tier 3)
     items = project_index.get(selected_name, [])
-    _render_flagged_items(items, enriched_project)
+    items = get_graph_linked_items(
+        project_name=selected_name,
+        linked_items=items,
+        project_index=project_index,
+        graph_context=graph_ctx,
+    )
+    _render_flagged_items(items, enriched_project, graph_context=graph_ctx)
 
     # Project metadata and context below the feed
     st.divider()
@@ -804,7 +882,7 @@ def _run_cockpit() -> None:
 
     # Graph context expander
     with st.expander("🕸️ Graph Context", expanded=False):
-        _render_graph_context(selected_name, vault_str)
+        _render_graph_context(graph_ctx)
 
 
 _run_cockpit()

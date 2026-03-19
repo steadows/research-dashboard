@@ -5,8 +5,77 @@ formatting helpers to avoid duplication.
 """
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Direction arrows for graph neighbors
+_DIRECTION_ARROWS: dict[str, str] = {"in": "<-", "out": "->", "both": "<->"}
+
+
+def _sanitize_note_name(name: str) -> str:
+    """Escape XML control characters and normalize a vault note name.
+
+    Prevents prompt injection via adversarial note names.
+
+    Args:
+        name: Raw note name from the vault graph.
+
+    Returns:
+        Sanitized string safe for prompt insertion.
+    """
+    sanitized = name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    sanitized = sanitized.replace("\n", " ").replace("\r", " ")
+    return sanitized[:200]
+
+
+def _format_graph_context(graph_ctx: dict[str, Any] | None) -> str:
+    """Format graph context data into a prompt section.
+
+    Args:
+        graph_ctx: Graph context dict with community_members, neighbors,
+            suggested_connections, centrality_rank, node_count. Or None.
+
+    Returns:
+        Formatted string for prompt injection, or empty string.
+    """
+    if not graph_ctx:
+        return ""
+
+    lines: list[str] = []
+
+    # Community peers
+    community = graph_ctx.get("community_members")
+    if community:
+        peers = sorted(_sanitize_note_name(m) for m in community)
+        lines.append(f"Community peers: {', '.join(peers)}")
+
+    # Top neighbors
+    neighbors = graph_ctx.get("neighbors", [])[:5]
+    if neighbors:
+        nb_lines = []
+        for nb in neighbors:
+            arrow = _DIRECTION_ARROWS.get(nb.get("direction", ""), "")
+            name = _sanitize_note_name(nb.get("name", ""))
+            score = nb.get("pagerank", 0.0)
+            nb_lines.append(f"  {arrow} {name} (PageRank: {score:.4f})")
+        lines.append("Top neighbors:\n" + "\n".join(nb_lines))
+
+    # Suggested connections
+    suggested = graph_ctx.get("suggested_connections", [])[:5]
+    if suggested:
+        sg_lines = []
+        for name, score in suggested:
+            sg_lines.append(f"  {_sanitize_note_name(name)} (Adamic-Adar: {score:.2f})")
+        lines.append("Suggested connections:\n" + "\n".join(sg_lines))
+
+    # Centrality rank
+    rank = graph_ctx.get("centrality_rank")
+    node_count = graph_ctx.get("node_count")
+    if rank is not None and node_count is not None:
+        lines.append(f"Centrality: #{rank} of {node_count}")
+
+    return "\n".join(lines)
 
 
 def _format_item_context(item: dict) -> str:
@@ -66,18 +135,40 @@ def _format_project_context(project: dict, *, include_full: bool = False) -> str
     return "\n".join(lines)
 
 
-def build_quick_prompt(item: dict, project: dict) -> str:
+def build_quick_prompt(
+    item: dict,
+    project: dict,
+    *,
+    graph_context: dict[str, Any] | None = None,
+) -> str:
     """Build a concise prompt for quick relevance analysis (Haiku).
 
     Args:
         item: Item dict (method, tool, or blog idea).
         project: Project dict with context.
+        graph_context: Optional graph context for vault network intelligence.
 
     Returns:
         Prompt string for quick analysis.
     """
     item_context = _format_item_context(item)
     project_context = _format_project_context(project, include_full=True)
+    graph_block = _format_graph_context(graph_context)
+
+    graph_section = ""
+    if graph_block:
+        graph_section = f"""
+
+<graph_context>
+{graph_block}
+</graph_context>"""
+
+    graph_objective = ""
+    if graph_block:
+        graph_objective = (
+            " Factor in the project's graph structure — community peers and "
+            "suggested connections indicate related work that may increase relevance."
+        )
 
     return f"""\
 <context>
@@ -89,10 +180,10 @@ list against active projects to decide where to focus next.
 
 --- PROJECT ---
 {project_context}
-</context>
+</context>{graph_section}
 
 <objective>
-Assess how relevant this item is to the given project.
+Assess how relevant this item is to the given project.{graph_objective}
 </objective>
 
 <style>
@@ -115,7 +206,12 @@ Exactly 3 lines, plain text:
 </response>"""
 
 
-def build_deep_prompt(item: dict, project: dict) -> str:
+def build_deep_prompt(
+    item: dict,
+    project: dict,
+    *,
+    graph_context: dict[str, Any] | None = None,
+) -> str:
     """Build a detailed prompt for deep analysis (Sonnet).
 
     Includes full project context, GSD plan, and tech stack for
@@ -124,12 +220,29 @@ def build_deep_prompt(item: dict, project: dict) -> str:
     Args:
         item: Item dict (method, tool, or blog idea).
         project: Project dict with full context.
+        graph_context: Optional graph context for vault network intelligence.
 
     Returns:
         Prompt string for deep analysis.
     """
     item_context = _format_item_context(item)
     project_context = _format_project_context(project, include_full=True)
+    graph_block = _format_graph_context(graph_context)
+
+    graph_section = ""
+    if graph_block:
+        graph_section = f"""
+
+<graph_context>
+{graph_block}
+</graph_context>"""
+
+    graph_objective = ""
+    if graph_block:
+        graph_objective = (
+            " Use the graph structure to assess cross-project relevance — "
+            "community peers and suggested connections reveal related work."
+        )
 
     return f"""\
 <context>
@@ -142,11 +255,11 @@ current status, and active GSD plan.
 
 --- PROJECT (Full Context) ---
 {project_context}
-</context>
+</context>{graph_section}
 
 <objective>
 Provide a comprehensive analysis of this item's applicability to the project, including \
-integration path, risks, and concrete next steps.
+integration path, risks, and concrete next steps.{graph_objective}
 </objective>
 
 <style>

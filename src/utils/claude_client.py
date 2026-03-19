@@ -57,18 +57,29 @@ def _get_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
-def _build_cache_key(item_name: str, project_name: str, analysis_type: str) -> str:
-    """Build a deterministic cache key from item, project, and type.
+_CACHE_VERSION = "v2"  # v2: includes graph_context in prompts
+
+
+def _build_cache_key(
+    item_name: str,
+    project_name: str,
+    analysis_type: str,
+    *,
+    has_graph: bool = False,
+) -> str:
+    """Build a deterministic cache key from item, project, type, and graph flag.
 
     Args:
         item_name: Name of the item being analyzed.
         project_name: Name of the project context.
         analysis_type: 'quick' or 'deep'.
+        has_graph: Whether graph context was provided.
 
     Returns:
         SHA-256 hex digest cache key.
     """
-    raw = f"{item_name}:{project_name}:{analysis_type}"
+    graph_flag = "graph" if has_graph else "nograph"
+    raw = f"{_CACHE_VERSION}:{item_name}:{project_name}:{analysis_type}:{graph_flag}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -195,7 +206,9 @@ def _analyze_item(
     analysis_type: str,
     model: str,
     max_tokens: int,
-    prompt_fn: Callable[[dict, dict], str],
+    prompt_fn: Callable[..., str],
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Shared analysis logic — cache check, API call, cache write.
 
@@ -207,11 +220,17 @@ def _analyze_item(
         model: Model identifier to use.
         max_tokens: Maximum response tokens.
         prompt_fn: Function to build the prompt.
+        graph_context: Optional graph context for vault network intelligence.
 
     Returns:
         Analysis result dict.
     """
-    cache_key = _build_cache_key(item["name"], project["name"], analysis_type)
+    cache_key = _build_cache_key(
+        item["name"],
+        project["name"],
+        analysis_type,
+        has_graph=graph_context is not None,
+    )
 
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
@@ -229,7 +248,7 @@ def _analyze_item(
         item["name"],
         project["name"],
     )
-    prompt = prompt_fn(item, project)
+    prompt = prompt_fn(item, project, graph_context=graph_context)
     result = _call_api(prompt, model, max_tokens)
 
     set_analysis_cache(cache_key, result, status_file)
@@ -258,6 +277,8 @@ def analyze_item_quick(
     item: dict,
     project: dict,
     status_file: Path,
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run quick relevance analysis using Haiku.
 
@@ -267,12 +288,20 @@ def analyze_item_quick(
         item: Item dict with at least 'name'.
         project: Project dict with at least 'name'.
         status_file: Path to status JSON for caching.
+        graph_context: Optional graph context for vault network intelligence.
 
     Returns:
         Analysis result dict.
     """
     return _analyze_item(
-        item, project, status_file, "quick", _HAIKU_MODEL, 1024, build_quick_prompt
+        item,
+        project,
+        status_file,
+        "quick",
+        _HAIKU_MODEL,
+        1024,
+        build_quick_prompt,
+        graph_context=graph_context,
     )
 
 
@@ -815,6 +844,8 @@ def analyze_item_deep(
     item: dict,
     project: dict,
     status_file: Path,
+    *,
+    graph_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run deep analysis using Sonnet.
 
@@ -824,10 +855,18 @@ def analyze_item_deep(
         item: Item dict with at least 'name'.
         project: Project dict with at least 'name'.
         status_file: Path to status JSON for caching.
+        graph_context: Optional graph context for vault network intelligence.
 
     Returns:
         Analysis result dict.
     """
     return _analyze_item(
-        item, project, status_file, "deep", _SONNET_MODEL, 2048, build_deep_prompt
+        item,
+        project,
+        status_file,
+        "deep",
+        _SONNET_MODEL,
+        2048,
+        build_deep_prompt,
+        graph_context=graph_context,
     )

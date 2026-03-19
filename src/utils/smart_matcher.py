@@ -379,6 +379,7 @@ def _compute_confidence(
 
 
 _CONFIDENCE_THRESHOLD = 0.3
+_MAX_COMMUNITY_PEERS = 15
 
 
 def _build_explicit_index(
@@ -545,3 +546,114 @@ def build_smart_project_index(
     )
 
     return sorted_index
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — graph-powered item discovery via project proximity
+# ---------------------------------------------------------------------------
+
+
+def _item_id(item: dict[str, Any]) -> str:
+    """Return composite identity key for deduplication.
+
+    Args:
+        item: Item dict with 'source_type' and 'name'.
+
+    Returns:
+        String key in the form ``source_type::name``.
+    """
+    return f"{item.get('source_type', 'item')}::{item.get('name', '')}"
+
+
+def _tag_item(
+    item: dict[str, Any],
+    discovery_source: str,
+    via_project: str | None = None,
+) -> dict[str, Any]:
+    """Return a shallow copy of *item* with discovery metadata added.
+
+    For propagated items (``discovery_source != "linked"``), the peer-project's
+    ``match_type`` and ``confidence`` are moved to ``origin_*`` prefixed fields
+    to prevent misleading display.
+
+    Args:
+        item: Original item dict (never mutated).
+        discovery_source: ``"linked"``, ``"community"``, or ``"suggested"``.
+        via_project: Peer project name, or ``None`` for directly linked items.
+
+    Returns:
+        New dict with discovery metadata.
+    """
+    tagged = {**item, "discovery_source": discovery_source, "via_project": via_project}
+    if discovery_source != "linked":
+        tagged["origin_match_type"] = tagged.pop("match_type", None)
+        tagged["origin_confidence"] = tagged.pop("confidence", None)
+    return tagged
+
+
+def get_graph_linked_items(
+    project_name: str,
+    linked_items: list[dict[str, Any]],
+    project_index: dict[str, list[dict[str, Any]]],
+    graph_context: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Discover items via project-to-project graph proximity (Tier 3).
+
+    Combines directly linked items with items from community peers and
+    suggested connections. Only explicit matches from peer projects are
+    propagated — inferred matches are not compounded across graph edges.
+
+    Args:
+        project_name: Selected project name.
+        linked_items: Items already matched for this project (Tier 1/2).
+        project_index: Full project index from ``build_smart_project_index``.
+        graph_context: Output of ``get_project_context`` with ``node_count``.
+
+    Returns:
+        List of item dicts with ``discovery_source``, ``via_project``, and
+        (for propagated items) ``origin_match_type``/``origin_confidence``.
+    """
+    # Tag linked items
+    result = [_tag_item(item, "linked") for item in linked_items]
+    seen_ids: set[str] = {_item_id(item) for item in linked_items}
+
+    if graph_context is None:
+        return result
+
+    # --- Community peers ---
+    community_members = graph_context.get("community_members") or frozenset()
+    community_projects = sorted(
+        name
+        for name in community_members
+        if name != project_name and name in project_index
+    )[:_MAX_COMMUNITY_PEERS]
+
+    community_items: list[dict[str, Any]] = []
+    for peer in community_projects:
+        for item in project_index[peer]:
+            if item.get("match_type") != "explicit":
+                continue
+            iid = _item_id(item)
+            if iid not in seen_ids:
+                community_items.append(_tag_item(item, "community", via_project=peer))
+                seen_ids.add(iid)
+
+    # --- Suggested connections ---
+    suggested_connections = graph_context.get("suggested_connections") or []
+    suggested_projects = [
+        name
+        for name, _ in suggested_connections
+        if name != project_name and name in project_index
+    ]
+
+    suggested_items: list[dict[str, Any]] = []
+    for peer in suggested_projects:
+        for item in project_index[peer]:
+            if item.get("match_type") != "explicit":
+                continue
+            iid = _item_id(item)
+            if iid not in seen_ids:
+                suggested_items.append(_tag_item(item, "suggested", via_project=peer))
+                seen_ids.add(iid)
+
+    return result + community_items + suggested_items
