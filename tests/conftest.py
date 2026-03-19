@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import networkx as nx
 import pytest
 
 
@@ -125,6 +126,35 @@ def tmp_vault(tmp_path: Path) -> Path:
     )
 
     return tmp_path
+
+
+@pytest.fixture
+def graph_fixture() -> nx.DiGraph:
+    """Build a small DiGraph with known topology for graph engine tests.
+
+    Topology:
+        8 nodes: 3 projects (A, B, C), 3 methods (M1, M2, M3), 2 tools (T1, T2)
+        Edges: A→M1, A→T1, B→M2, B→T1, B→T2, C→M3, M1→T1, M2→M3
+        Hub: T1 (3 in-degree)
+        Bridge: B (connects two clusters)
+        Weak node: C (only 2 edges)
+        Clusters: {A, M1, T1} and {B, M2, M3, T2, C}
+    """
+    G = nx.DiGraph()
+    G.add_nodes_from(["A", "B", "C", "M1", "M2", "M3", "T1", "T2"])
+    G.add_edges_from(
+        [
+            ("A", "M1"),
+            ("A", "T1"),
+            ("B", "M2"),
+            ("B", "T1"),
+            ("B", "T2"),
+            ("C", "M3"),
+            ("M1", "T1"),
+            ("M2", "M3"),
+        ]
+    )
+    return G
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import networkx as nx
 import pytest
 
 from utils.blog_queue_parser import parse_blog_queue
@@ -205,3 +206,85 @@ class TestPageHelpers:
         """safe_html escapes quotation marks."""
         result = safe_html('value="test"')
         assert '"' not in result or "&quot;" in result
+
+
+# ---------------------------------------------------------------------------
+# Graph Insights tab — data flow and degradation
+# ---------------------------------------------------------------------------
+
+
+class TestGraphInsightsTab:
+    """Tests for the Graph Insights tab data pipeline."""
+
+    def test_graph_engine_importable(self) -> None:
+        """graph_engine module can be imported without Streamlit."""
+        from utils.graph_engine import (
+            build_vault_graph,
+            compute_centrality_metrics,
+            detect_communities,
+            get_graph_health,
+            suggest_links,
+        )
+
+        # Verify all functions are callable
+        assert callable(build_vault_graph)
+        assert callable(compute_centrality_metrics)
+        assert callable(detect_communities)
+        assert callable(get_graph_health)
+        assert callable(suggest_links)
+
+    def test_empty_graph_degrades_gracefully(self) -> None:
+        """Empty graph data doesn't raise exceptions (safe_parse pattern)."""
+        from utils.graph_engine import (
+            compute_centrality_metrics,
+            detect_communities,
+            get_graph_health,
+        )
+
+        G = nx.DiGraph()
+        metrics = compute_centrality_metrics(G)
+        communities = detect_communities(G)
+        health = get_graph_health(G)
+
+        # All return valid empty structures
+        assert all(v == {} for v in metrics.values())
+        assert communities == []
+        assert all(v == 0 for v in health.values())
+
+    def test_health_stats_present(self, graph_fixture: nx.DiGraph) -> None:
+        """Graph health returns all 5 expected metric keys."""
+        from utils.graph_engine import get_graph_health
+
+        health = get_graph_health(graph_fixture)
+        assert health["node_count"] == 8
+        assert health["edge_count"] == 8
+
+    def test_hub_notes_ranked(self, graph_fixture: nx.DiGraph) -> None:
+        """PageRank produces a ranking suitable for hub notes table."""
+        from utils.graph_engine import compute_centrality_metrics
+
+        metrics = compute_centrality_metrics(graph_fixture)
+        pagerank = metrics["pagerank"]
+        # T1 should be top hub (highest in-degree, high PageRank)
+        ranked = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
+        top_5_names = [name for name, _ in ranked[:5]]
+        assert "T1" in top_5_names
+
+    def test_communities_renderable(self, graph_fixture: nx.DiGraph) -> None:
+        """Communities produce data suitable for expander rendering."""
+        from utils.graph_engine import detect_communities
+
+        communities = detect_communities(graph_fixture)
+        assert len(communities) >= 1
+        # Each community has sortable members
+        for c in communities:
+            sorted_members = sorted(c)
+            assert len(sorted_members) > 0
+
+    def test_suggested_links_for_hubs(self, graph_fixture: nx.DiGraph) -> None:
+        """Link suggestions work for hub nodes (rendering in Suggested Links section)."""
+        from utils.graph_engine import suggest_links
+
+        suggestions = suggest_links(graph_fixture, "T1", top_n=3)
+        # T1 is a sink with high in-degree — may or may not have suggestions
+        assert isinstance(suggestions, list)

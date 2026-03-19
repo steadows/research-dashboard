@@ -1371,6 +1371,239 @@ git commit -m "feat: instagram topic research — topic-centric prompt, shortcod
 
 ---
 
+## Session 15: Graph Analysis Engine — Vault Network Intelligence [x]
+
+Requires Session 14 complete.
+
+Adds a graph analysis engine powered by `obsidiantools` + NetworkX. The engine
+parses the Obsidian vault's wiki-link structure into a directed graph and computes
+centrality metrics, community clusters, link predictions, and graph health stats.
+Results surface in two places: a new Dashboard "Graph Insights" tab (vault-wide
+view) and a per-project graph context section in the Project Cockpit.
+
+Complements the existing data pipeline — `vault_parser.py` continues handling
+project-specific parsing (frontmatter, GSD plans), while `obsidiantools` handles
+vault-wide graph construction. The smart matcher's keyword-based inference (Tier 2)
+and the knowledge linker's wiki-link injection remain unchanged. The graph engine
+adds a structural analysis layer on top of both.
+
+### Key capabilities
+
+| Capability | What it answers | Algorithm |
+|-----------|----------------|-----------|
+| Hub detection | "What are my most connected notes?" | PageRank (directed) |
+| Community clusters | "What research themes exist in my vault?" | Louvain (undirected) |
+| Missing links | "What should be connected but isn't?" | Adamic-Adar index |
+| Centrality ranking | "How important is this project structurally?" | Betweenness centrality |
+| Graph health | "How fragmented is my knowledge graph?" | Component analysis, bridge detection |
+| Neighborhood context | "What's 1-2 hops from this project?" | Adjacency traversal |
+
+### Dependency order
+
+1. Dependency install + test fixtures — establish obsidiantools + NetworkX in the env
+2. Core engine (TDD) — `graph_engine.py` with pure graph functions
+3. Dashboard tab — vault-wide graph insights rendering
+4. Cockpit integration — per-project graph context section
+5. Polish + quality gate
+
+### Module boundary
+
+`src/utils/graph_engine.py` is a **pure analysis module** — no Streamlit imports,
+no caching decorators. Page files own all caching via `_load_graph_*()` wrappers
+and `safe_parse()`, matching the existing pattern used by `_load_tools()`,
+`_load_blog_queue()`, etc. This keeps the engine independently testable.
+
+### Caching and invalidation
+
+- Pages cache graph data via `@st.cache_data(ttl=3600)` wrappers (same as parsers)
+- The `nx.DiGraph` object is not pickle-serializable, so pages use
+  `@st.cache_resource(ttl=3600)` for the graph object only
+- **Invalidation contract**: anywhere the app already calls `st.cache_data.clear()`
+  (Dashboard refresh, Cockpit refresh, manual vault re-link), also call
+  `st.cache_resource.clear()` so graph data stays in sync with parser data
+- `graph_engine.py` has no cache awareness; pages own all invalidation
+
+### Performance guardrails
+
+- `build_vault_graph()` uses `connect()` only (fast, graph-only); skips `gather()`
+- For vaults with >1000 nodes, skip `betweenness_centrality` (O(VE), expensive)
+  and fall back to degree-only ranking. Log a WARNING.
+- Link prediction limited to 3-hop neighborhood to avoid O(N²) candidate pairs
+- All metrics cached with TTL=3600; no per-request recomputation
+
+### obsidiantools integration notes
+
+From research doc (`docs/research/obsidian-graph-tools.md`):
+- `otools.Vault(path).connect()` is fast (graph-only); `.gather()` is slow — skip it
+- Raw graph is `MultiDiGraph` — collapse to simple `DiGraph` for algorithms
+- Remove self-loops (Obsidian header links like `[[note#section]]`)
+- Filter non-existent notes (linked but never created) via `vault.file_index` if available; guarded with `hasattr()` check
+- Louvain requires undirected graph; PageRank uses directed
+- Bridge detection uses undirected projection: `nx.bridges(G.to_undirected())`
+- `centrality_rank` is among ALL notes in the vault (not just project notes)
+
+### [15a] TDD — write graph engine tests first [x]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- Add `obsidiantools>=0.11.0,<1.0` and `networkx>=3.0` to `requirements.txt` and `pip install`
+- `tests/conftest.py` — add a `graph_fixture` that builds a small `nx.DiGraph` with known topology:
+  - 8 nodes: 3 "projects" (A, B, C), 3 "methods" (M1, M2, M3), 2 "tools" (T1, T2)
+  - Known edges: A→M1, A→T1, B→M2, B→T1, B→T2, C→M3, M1→T1, M2→M3
+  - This creates: a hub (T1 — 3 in-degree), a bridge (B — connects two clusters), an orphan-like node (C — only 2 edges), community structure (A-M1-T1 cluster, B-M2-M3-T2 cluster)
+- `tests/test_graph_engine.py`:
+  - **build_vault_graph**:
+    - Returns `nx.DiGraph` (not `MultiDiGraph`)
+    - No self-loops in returned graph
+    - Non-existent notes (linked but uncreated) are filtered out
+    - Empty vault returns graph with 0 nodes
+  - **compute_centrality_metrics**:
+    - Returns dict with keys `pagerank`, `betweenness`, `degree`, `in_degree`, `out_degree`
+    - Each value is a `dict[str, float|int]` keyed by note name
+    - PageRank values sum to ~1.0
+    - Hub node (T1) has highest in-degree
+    - Empty graph returns empty dicts for all metrics
+  - **detect_communities**:
+    - Returns `list[frozenset[str]]`
+    - For graphs with 2+ nodes: every node appears in exactly one community; union equals all nodes
+    - For graphs with 0-1 nodes: returns empty list (no meaningful communities)
+    - Cockpit handles empty communities gracefully (shows "Not enough connections for clustering")
+  - **suggest_links**:
+    - Returns `list[tuple[str, float]]` sorted by score descending
+    - Excludes existing neighbors from suggestions
+    - Excludes self from suggestions
+    - Returns empty list for note not in graph
+    - `top_n` parameter limits result count
+    - Scores are non-negative floats
+  - **get_graph_health**:
+    - Returns dict with `node_count`, `edge_count`, `orphan_count`, `component_count`, `bridge_count`
+    - All values are non-negative ints
+    - Empty graph returns all zeros
+    - Disconnected graph has `component_count` > 1
+  - **get_project_context**:
+    - Returns dict with `centrality_rank`, `pagerank_score`, `neighbors`, `community_members`, `suggested_connections`
+    - `centrality_rank` is 1-indexed int
+    - Each neighbor is `{"name": str, "direction": "in"|"out"|"both", "pagerank": float}`
+    - `neighbors` sorted by PageRank descending
+    - `community_members` is `None` when graph has < 2 nodes (not enough for clustering)
+    - Returns `None` for note not in graph
+  - **Integration test** (uses real tmp vault with `.md` files):
+    - Create 5 markdown files with `[[wiki-links]]` in a tmp directory, including at least one file in a `Projects/` subdirectory (e.g., `Projects/Alpha.md` linking to `Projects/Beta.md`)
+    - Call `build_vault_graph()` on that directory
+    - Verify nodes and edges match expected structure
+    - Verify `compute_centrality_metrics()` produces non-empty results
+    - **Project-name alignment**: call `parse_projects()` on the same tmp vault and verify that at least one project name from `parse_projects()` appears as a node in the graph — proving `Path.stem` alignment between the two parsers
+    - Call `get_project_context()` with that project name and verify it returns a non-None result with valid `centrality_rank`
+  - **UI regression tests** (extend existing page test files):
+    - `tests/test_dashboard_tabs.py` — add tests:
+      - Graph Insights tab is wired into `st.tabs()` call
+      - Empty graph data degrades gracefully via `safe_parse()` (no exception)
+      - Tab renders health stats, hub notes, communities, suggested links when data present
+    - `tests/test_cockpit_graph_context.py` — new file (graph context is page-level behavior in `2_Project_Cockpit.py`, not a `cockpit_components.py` utility):
+      - Missing-project graph context shows `st.info()` empty state, not exception
+      - Graph context expander renders without error when graph data is available
+      - Graph context handles `None` return from `get_project_context()` gracefully
+      - Neighbors render correct direction indicators (→/←/↔) based on `direction` field
+- [ ] **Verify RED**: `pytest tests/test_graph_engine.py -v` — tests fail for missing implementation
+
+### [15b] Core engine — `src/utils/graph_engine.py` [x]
+- Implement all functions to pass tests from [15a]:
+  - `build_vault_graph(vault_path_str: str) -> nx.DiGraph`:
+    1. `otools.Vault(vault_path_str).connect()`
+    2. Convert `vault.graph` (MultiDiGraph) → simple `nx.DiGraph`
+    3. Remove self-loops: `G.remove_edges_from(nx.selfloop_edges(G))`
+    4. Filter non-existent notes: check `hasattr(vault, 'file_index')` before using; if present, keep only nodes whose name is a key in `vault.file_index`. If absent (API change), log WARNING and skip filtering.
+    5. Return cleaned graph
+  - `compute_centrality_metrics(G: nx.DiGraph) -> dict[str, dict[str, float]]`:
+    - `pagerank`: `nx.pagerank(G)` (directed)
+    - `betweenness`: `nx.betweenness_centrality(G)` (directed)
+    - `degree`, `in_degree`, `out_degree`: from `G.degree()`, `G.in_degree()`, `G.out_degree()`
+    - Guard: return empty dicts if `G.number_of_nodes() == 0`
+  - `detect_communities(G: nx.DiGraph) -> list[frozenset[str]]`:
+    - Guard: return empty list if graph has < 2 nodes (no meaningful communities for 0-1 nodes)
+    - Convert to undirected, call `louvain_communities(G_undirected, seed=42)`
+    - Contract: for 2+ node graphs, every node appears in exactly one community
+  - `suggest_links(G: nx.DiGraph, note: str, top_n: int = 10) -> list[tuple[str, float]]`:
+    - Validate note in graph; convert to undirected
+    - Limit candidates to 3-hop neighborhood: `nx.single_source_shortest_path_length(G_undirected, note, cutoff=3)`
+    - Exclude existing neighbors and self
+    - `nx.adamic_adar_index(G_undirected, pairs)`
+    - Filter zero scores, sort descending, return top N
+  - `get_graph_health(G: nx.DiGraph) -> dict[str, int]`:
+    - `node_count`, `edge_count`, `orphan_count` (degree 0), `component_count` (weakly connected), `bridge_count`
+  - `get_project_context(G, metrics, communities, project_name) -> dict[str, Any] | None`:
+    - Centrality rank from PageRank sorted descending (rank among ALL vault notes, 1-indexed)
+    - `neighbors`: list of `{"name": str, "direction": "in"|"out"|"both", "pagerank": float}` dicts — built by checking `G.predecessors(project_name)` (→ "in"), `G.successors(project_name)` (→ "out"), intersection (→ "both"). Sorted by PageRank descending.
+    - Community membership lookup — returns the frozenset containing this project, or `None` if graph has < 2 nodes
+    - Suggested connections via `suggest_links()`
+  - **No Streamlit imports in this module** — caching lives at the page layer (see [15c], [15d])
+  - Performance guard: `compute_centrality_metrics()` skips `betweenness_centrality` when `G.number_of_nodes() > 1000`, logs a WARNING, and returns an empty dict `{}` for the `betweenness` key. Dashboard hub table renders "—" in the Betweenness column when the value is missing.
+- [ ] **Verify GREEN**: `pytest tests/test_graph_engine.py -v` — ALL tests PASS
+- [ ] Module is under 400 lines
+- [ ] Type hints on all functions, docstrings on all public functions
+
+### [15c] Dashboard — Graph Insights tab [x]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply card/badge patterns.
+- In `src/pages/1_Dashboard.py`:
+  - Add import: `from utils.graph_engine import build_vault_graph, compute_centrality_metrics, detect_communities, suggest_links, get_graph_health`
+  - Add cached loaders following existing `_load_tools` pattern:
+    - `@st.cache_resource(ttl=3600) _load_vault_graph(vault_str)` — calls `build_vault_graph()`, returns `nx.DiGraph`
+    - `@st.cache_data(ttl=3600) _load_graph_metrics(vault_str)` — calls `compute_centrality_metrics()`, `detect_communities()`, `get_graph_health()`, returns serializable dict
+  - **Invalidation**: update existing `_refresh_data()` / sidebar refresh and `_run_manual_link()` to call `st.cache_resource.clear()` alongside `st.cache_data.clear()` so graph stays in sync
+  - Wrap graph data loads with `safe_parse(...)` for graceful degradation (obsidiantools import failure, empty vault, etc.)
+  - Extend `st.tabs()` from 6 → 7 tabs: append `"🕸️ Graph Insights"`
+  - Add `_render_graph_insights_tab(vault_str: str)` with 4 sections:
+    - **Graph Health** — 5 metric cards in a row (nodes, edges, orphans, components, bridges) using `st.columns(5)` + `st.metric()`. Use surface-card CSS class consistent with other tabs.
+    - **Hub Notes** — Top 15 notes by PageRank. `st.dataframe()` with columns: Rank, Note, PageRank, In-Degree, Betweenness. Column config for formatting (PageRank to 4 decimals, etc.).
+    - **Research Communities** — One `st.expander()` per community (top 10 by size). Label: "Cluster N (X notes)". Inside: sorted member list with PageRank badge. Filter communities with < 3 members to reduce noise; show count of filtered as "N small clusters not shown".
+    - **Suggested Links** — Pick top 5 hub notes, show top 3 link predictions each. Format: "Hub Note → Suggested Note (score: 0.42)". Use `st.caption()` for scores.
+  - Wire up: `with tab_graph: _render_graph_insights_tab(vault_str)`
+  - Load graph data in `_run_dashboard()` alongside other `safe_parse` calls
+
+### [15d] Cockpit — per-project graph context [x]
+- In `src/pages/2_Project_Cockpit.py`:
+  - Add import: `from utils.graph_engine import build_vault_graph, compute_centrality_metrics, detect_communities, get_project_context`
+  - Add cached loaders matching Dashboard pattern:
+    - Reuse same `@st.cache_resource` / `@st.cache_data` wrapper functions (import from a shared location or duplicate — both are small)
+    - Wrap with `safe_parse(...)` for graceful degradation
+  - **Invalidation**: update existing Cockpit refresh to also call `st.cache_resource.clear()`
+  - Add `_render_graph_context(project_name: str, vault_str: str) -> None`:
+    - Load cached graph + metrics
+    - Call `get_project_context()` for selected project
+    - Handle `None` return (project not in graph) with `st.info("No graph data for this project")`
+    - Render 4 subsections:
+      - **Centrality** — "Ranks #X of Y notes by PageRank" as `st.metric()`
+      - **Nearest neighbors** — Top 5 connected notes with direction indicator (→ outgoing, ← incoming, ↔ bidirectional). Each neighbor is a `st.caption()` line.
+      - **Community** — "Part of cluster with N notes" + expandable member list
+      - **Suggested connections** — Top 5 link predictions with Adamic-Adar scores
+  - Wire up: add as a collapsible `st.expander("🕸️ Graph Context", expanded=False)` in the **lower metadata/context area**, alongside existing project header and context sources. Keep the current layout: title → flagged items feed → metadata/context (graph context goes here)
+
+### [15e] Verify GREEN [x]
+- [ ] Run `pytest tests/test_graph_engine.py -v` — ALL tests PASS
+- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [ ] `ruff check src/ tests/` — no errors
+- [ ] `ruff format --check src/ tests/` — no formatting issues
+- [ ] Manual smoke test: `cd src && streamlit run Home.py`
+  - Dashboard → Graph Insights tab renders with health stats, hub notes, communities, suggested links
+  - Project Cockpit → Graph Context expander shows centrality, neighbors, community, suggestions
+  - Both views handle empty/missing project gracefully
+
+### [15f] Quality Gate [x]
+
+**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `graph_engine.py` (cached graph not mutated, 3-hop limit on link prediction, empty graph guards, frozenset serialization). Security review focus: no vault path traversal, no user-controlled input to `nx` algorithms, cached resource not modified by callers. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 15 for extractable patterns → save to `~/.claude/skills/learned/`.
+
+### [15g] Commit [~]
+```bash
+git add src/utils/graph_engine.py src/pages/1_Dashboard.py src/pages/2_Project_Cockpit.py \
+  tests/test_graph_engine.py tests/test_dashboard_tabs.py tests/test_cockpit_graph_context.py \
+  tests/conftest.py requirements.txt GSD_PLAN.md
+git commit -m "feat: graph analysis engine — vault network intelligence via obsidiantools + NetworkX"
+```
+
+---
+
 ## Decisions Log
 
 | Decision | Choice | Rationale |
@@ -1411,6 +1644,17 @@ git commit -m "feat: instagram topic research — topic-centric prompt, shortcod
 | Instagram prompt heading | `## Getting Started` replaces `## How to Install` | Not all Instagram topics are installable tools; parser only depends on `## Overview` + `## Programmatic Assessment`, so heading change is safe |
 | Low-signal threshold | No transcript + no key_points + caption < 20 chars | Concrete threshold enables deterministic testing; agent still runs and produces minimal report |
 | Instagram model routing | Same as existing research agent chain | Defer model optimization until usage patterns are observed; avoids premature cost-routing complexity |
+| Graph library | `obsidiantools` + NetworkX (both direct deps) | Mature (535 stars), Python-native, gives raw NetworkX graph; all Obsidian plugins are UI-only; MCP graph servers too immature. NetworkX listed as direct dep since we import it directly, not just transitively. |
+| Graph caching | `cache_resource` for DiGraph at page layer, `cache_data` for metrics at page layer | DiGraph is not serializable by pickle; `cache_resource` stores reference. Metrics are plain dicts, safe for `cache_data`. `graph_engine.py` stays pure (no Streamlit imports) — matches existing parser/utils pattern. |
+| Graph cache invalidation | Clear both `cache_data` and `cache_resource` on any refresh | Avoids stale graph data when vault is re-linked or manually refreshed. Single invalidation contract across Dashboard refresh, Cockpit refresh, and manual vault re-link. |
+| Betweenness centrality guard | Skip when vault has >1000 nodes | O(VE) complexity; personal vaults are typically 200-500 notes but guard prevents degraded UX on large vaults |
+| Centrality rank scope | Among ALL vault notes | Project's rank relative to every note gives true structural importance; ranking only among projects would hide how projects relate to methods/tools/etc. |
+| Link prediction scope | 3-hop neighborhood only | Full vault Adamic-Adar is O(N²); 3-hop cutoff keeps it fast while capturing meaningful structural proximity |
+| Community display filter | 3+ members only | Tiny communities (1-2 notes) are noise in the UI; count shown but not expanded |
+| Graph tab position | 7th tab in Dashboard | Appended after Agentic Hub — newest/most experimental features go last |
+| Cockpit graph section | Collapsed expander in lower metadata/context area (after items feed) | Graph context is supplementary — items feed remains the primary view; current layout preserved: title → items → metadata/context (graph here) |
+| Louvain seed | `seed=42` | Deterministic community detection across reruns; avoids confusing UI shifts |
+| obsidiantools connect vs gather | `connect()` only, skip `gather()` | `connect()` builds the graph from wiki-links (fast). `gather()` reads all note content (slow, unnecessary for graph-only analysis) |
 
 ---
 
@@ -1437,6 +1681,8 @@ git commit -m "feat: instagram topic research — topic-centric prompt, shortcod
 │  │ paper_fetcher   workbench_tracker                     │       │
 │  │ research_agent   vault_writer                         │       │
 │  │ instagram_ingester   instagram_parser                 │       │
+│  │ graph_engine (obsidiantools + NetworkX)              │       │
+│  │ knowledge_linker   smart_matcher                    │       │
 │  └─────────────────────────┬─────────────────────────────┘       │
 └────────────────────────────┼─────────────────────────────────────┘
                              │
@@ -1501,6 +1747,13 @@ git commit -m "feat: instagram topic research — topic-centric prompt, shortcod
 | `src/utils/workbench_tracker.py` | 8, 9, 14 | Workbench JSON state CRUD; namespaced keys, generalized schema, provenance restore; Instagram identity helper |
 | `tests/test_agentic_hub.py` | 13, 14 | Agentic Hub tab render tests — filter, card content, button states, XSS; title preservation |
 | `tests/test_instagram_workbench.py` | 13, 14 | Instagram workbench integration — key format, transcript field; identity-model, prompt, UI boundary tests |
+| `src/utils/graph_engine.py` | 15 | Vault graph analysis — obsidiantools + NetworkX (centrality, communities, link prediction, health) |
+| `tests/test_graph_engine.py` | 15 | Graph engine unit + integration tests |
+| `tests/test_dashboard_tabs.py` | 15 | Extended with Graph Insights tab wiring + empty-state regression tests |
+| `tests/test_cockpit_graph_context.py` | 15 | Page-level graph context regression tests (placement, empty state, direction indicators) |
+| `src/pages/1_Dashboard.py` | 3, 7, 8, 9, 15 | Graph Insights tab added; cache invalidation updated |
+| `src/pages/2_Project_Cockpit.py` | 5, 9, 15 | Per-project graph context section in metadata area; cache invalidation updated |
+| `requirements.txt` | 7, 12, 15 | `obsidiantools>=0.11.0,<1.0`, `networkx>=3.0` added |
 
 ---
 
@@ -1532,3 +1785,9 @@ git commit -m "feat: instagram topic research — topic-centric prompt, shortcod
 | Vault write path traversal (username field) | Low | High | Validate `username` contains only alphanumeric + `.` + `_` + `-` before using in path construction; reject with ValueError on unexpected chars |
 | Low-signal Instagram posts produce empty research | Medium | Low | Agent still runs; minimal report with `NO` assessment and evidence checklist — no new failure state |
 | Instagram title lost on workbench add | High | Medium | Identity model separates display title (`name`) from durable key (`shortcode`); Session 14 fix |
+| obsidiantools API changes | Low | Medium | Pin `obsidiantools>=0.11.0,<1.0`; check `vault.file_index` exists before use |
+| Large vault makes link prediction slow | Medium | Medium | Limit Adamic-Adar candidates to 3-hop neighborhood; global view only computes for top 5 hubs |
+| Project names don't match obsidiantools note names | Low | Medium | Both use `Path.stem`; integration test verifies alignment |
+| Louvain produces too many tiny communities | Medium | Low | Filter to communities with 3+ members for display; show filtered count |
+| Cached DiGraph mutated by caller | Low | High | Never mutate cached graph; `to_undirected()` creates copies; documented in docstrings |
+| PageRank doesn't converge on disconnected graph | Low | Low | `nx.pagerank` handles gracefully with default damping factor |

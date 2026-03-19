@@ -30,6 +30,12 @@ from utils.page_helpers import (
 )
 from utils.smart_matcher import build_smart_project_index
 from utils.status_tracker import load_status, set_item_status
+from utils.graph_engine import (
+    build_vault_graph,
+    compute_centrality_metrics,
+    detect_communities,
+    get_project_context,
+)
 from utils.vault_parser import parse_projects
 from utils.workbench_tracker import add_to_workbench
 
@@ -62,6 +68,25 @@ def _load_projects(vault_path_str: str) -> list[dict[str, Any]]:
 def _load_project_index(vault_path_str: str) -> dict[str, list[dict[str, Any]]]:
     """Load smart project index with explicit + inferred matches."""
     return build_smart_project_index(vault_path_str)
+
+
+@st.cache_resource(ttl=3600)
+def _load_vault_graph(vault_path_str: str):
+    """Load vault graph with caching (non-serializable, uses cache_resource)."""
+    return build_vault_graph(vault_path_str)
+
+
+@st.cache_data(ttl=3600)
+def _load_graph_context_data(vault_path_str: str) -> dict:
+    """Load graph metrics and communities for project context."""
+    G = _load_vault_graph(vault_path_str)
+    metrics = compute_centrality_metrics(G)
+    communities = detect_communities(G)
+    return {
+        "metrics": metrics,
+        "communities": [list(c) for c in communities],
+        "node_count": G.number_of_nodes(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +161,7 @@ def _render_project_sidebar(
         if st.button(
             "Refresh data", use_container_width=True, icon=":material/refresh:"
         ):
+            st.cache_resource.clear()
             st.cache_data.clear()
             st.rerun()
 
@@ -632,6 +658,84 @@ def _render_context_sources(
 
 
 # ---------------------------------------------------------------------------
+# Graph context [15d]
+# ---------------------------------------------------------------------------
+
+_DIRECTION_ICONS: dict[str, str] = {
+    "out": "\u2192",
+    "in": "\u2190",
+    "both": "\u2194",
+}
+
+
+def _render_graph_context(project_name: str, vault_str: str) -> None:
+    """Render per-project graph context panel inside an expander.
+
+    Shows centrality rank, nearest neighbors, community membership,
+    and suggested connections from the vault knowledge graph.
+
+    Args:
+        project_name: Name of the selected project.
+        vault_str: Vault path string for cached loaders.
+    """
+    graph_data = safe_parse(
+        _load_graph_context_data, vault_str, fallback=None, label="graph context"
+    )
+    if graph_data is None:
+        st.info("No graph data available.")
+        return
+
+    G = _load_vault_graph(vault_str)
+    metrics = graph_data["metrics"]
+    communities_raw = graph_data["communities"]
+    communities = [frozenset(c) for c in communities_raw]
+    node_count = graph_data["node_count"]
+
+    ctx = get_project_context(G, metrics, communities, project_name)
+    if ctx is None:
+        st.info("No graph data for this project.")
+        return
+
+    # --- Centrality ---
+    st.markdown("**Centrality**")
+    st.metric(
+        label="PageRank rank",
+        value=f"#{ctx['centrality_rank']} of {node_count}",
+    )
+
+    # --- Nearest neighbors ---
+    st.markdown("**Nearest neighbors**")
+    neighbors = ctx["neighbors"][:5]
+    if neighbors:
+        for nb in neighbors:
+            icon = _DIRECTION_ICONS.get(nb["direction"], "")
+            st.caption(f"{icon} {safe_html(nb['name'])}")
+    else:
+        st.caption("No direct connections.")
+
+    # --- Community ---
+    st.markdown("**Community**")
+    community_members = ctx.get("community_members")
+    if community_members:
+        member_count = len(community_members)
+        st.caption(f"Part of a cluster with {member_count} notes")
+        with st.expander("Cluster members", expanded=False):
+            for member in sorted(community_members):
+                st.caption(safe_html(member))
+    else:
+        st.caption("Not assigned to any community.")
+
+    # --- Suggested connections ---
+    st.markdown("**Suggested connections**")
+    suggested = ctx.get("suggested_connections", [])[:5]
+    if suggested:
+        for name, score in suggested:
+            st.caption(f"{safe_html(name)} — Adamic-Adar {score:.2f}")
+    else:
+        st.caption("No link suggestions available.")
+
+
+# ---------------------------------------------------------------------------
 # Main page
 # ---------------------------------------------------------------------------
 
@@ -697,6 +801,10 @@ def _run_cockpit() -> None:
 
     # Context sources transparency expander
     _render_context_sources(project, vault_path, plan_files, enriched_project)
+
+    # Graph context expander
+    with st.expander("🕸️ Graph Context", expanded=False):
+        _render_graph_context(selected_name, vault_str)
 
 
 _run_cockpit()

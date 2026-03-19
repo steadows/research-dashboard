@@ -1,6 +1,6 @@
-"""Dashboard page — global intel feed with 5 tabs.
+"""Dashboard page — global intel feed with 7 tabs.
 
-Tabs: Home, Blog Queue, Tools Radar, Research Archive, Weekly AI Signal.
+Tabs: Home, Blog Queue, Tools Radar, Research Archive, Weekly AI Signal, Agentic Hub, Graph Insights.
 All vault-sourced strings are escaped via safe_html() before unsafe_allow_html.
 Parser calls are wrapped with @st.cache_data(ttl=3600) for performance.
 """
@@ -11,6 +11,11 @@ from typing import Any
 
 import streamlit as st
 
+from utils.knowledge_linker import (
+    build_entity_index,
+    link_directory,
+    link_satellites_to_projects,
+)
 from utils.blog_publisher import (
     archive_item,
     get_draft_path,
@@ -18,6 +23,13 @@ from utils.blog_publisher import (
     write_draft_mdx,
 )
 from utils.blog_queue_parser import parse_blog_queue
+from utils.graph_engine import (
+    build_vault_graph,
+    compute_centrality_metrics,
+    detect_communities,
+    get_graph_health,
+    suggest_links,
+)
 from utils.claude_client import (
     analyze_blog_potential,
     deep_read_paper,
@@ -49,6 +61,104 @@ from utils.workbench_tracker import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Knowledge linker — auto-link vault on first load, manual re-link button
+# ---------------------------------------------------------------------------
+
+
+_LINK_TARGETS: list[tuple[str, str]] = [
+    ("Instagram", "Research/Instagram"),
+    ("Dev Journal", "Dev Journal"),
+    ("JournalClub", "Research/JournalClub"),
+    ("TLDR", "Research/TLDR"),
+    ("Blog Queue", "Writing"),
+    ("Blueprints", "Blueprints"),
+    ("Plans", "Plans"),
+    ("Reference", "Reference"),
+    ("Journal", "Journal"),
+]
+
+
+def _link_vault_with_progress(vault_path: Path, progress_bar: Any) -> dict[str, int]:
+    """Run knowledge linker across all vault directories with progress updates.
+
+    Args:
+        vault_path: Root path to the Obsidian vault.
+        progress_bar: Streamlit progress bar element to update.
+
+    Returns:
+        Dict mapping directory name to number of files modified.
+    """
+    total_steps = len(_LINK_TARGETS) + 2  # +1 entity index, +1 satellites
+    results: dict[str, int] = {}
+
+    progress_bar.progress(0, text="Building entity index…")
+    entities = build_entity_index(vault_path)
+
+    for i, (name, rel_path) in enumerate(_LINK_TARGETS):
+        frac = (i + 1) / total_steps
+        progress_bar.progress(frac, text=f"Linking {name}…")
+        target_dir = vault_path / rel_path
+        results[name] = link_directory(vault_path, target_dir, entities=entities)
+
+    progress_bar.progress(
+        (len(_LINK_TARGETS) + 1) / total_steps, text="Linking satellites…"
+    )
+    results["Satellites"] = link_satellites_to_projects(vault_path)
+
+    progress_bar.progress(1.0, text="Done")
+    return results
+
+
+def _auto_link_vault(vault_path: Path) -> None:
+    """Run knowledge linker once per session on Dashboard startup.
+
+    Uses session state guard to avoid re-running on every Streamlit rerun.
+    Must be called before cached parsers so wiki-links are present when parsed.
+
+    Args:
+        vault_path: Root path to the Obsidian vault.
+    """
+    if st.session_state.get("dashboard__vault_linked"):
+        return
+
+    progress = st.progress(0, text="Linking vault…")
+    results = _link_vault_with_progress(vault_path, progress)
+    progress.empty()
+
+    st.session_state["dashboard__vault_linked"] = True
+    st.session_state["dashboard__vault_link_results"] = results
+
+    total = sum(results.values())
+    if total > 0:
+        st.toast(f"🔗 Vault linked: {total} files updated")
+    logger.info("Auto-link results: %s", results)
+
+
+def _run_manual_link(vault_path: Path) -> None:
+    """Run knowledge linker on demand and refresh cached data.
+
+    Args:
+        vault_path: Root path to the Obsidian vault.
+    """
+    progress = st.progress(0, text="Linking vault…")
+    results = _link_vault_with_progress(vault_path, progress)
+    progress.empty()
+
+    total = sum(results.values())
+    st.session_state["dashboard__vault_linked"] = True
+    st.session_state["dashboard__vault_link_results"] = results
+
+    if total > 0:
+        parts = [f"{k}: {v}" for k, v in results.items() if v > 0]
+        st.toast(f"🔗 Linked {total} files — {', '.join(parts)}")
+        st.cache_resource.clear()
+        st.cache_data.clear()
+        st.rerun()
+    else:
+        st.toast("🔗 All vault files already linked")
+
 
 # ---------------------------------------------------------------------------
 # Cached parser wrappers — @st.cache_data(ttl=3600)
@@ -85,6 +195,27 @@ def _load_instagram_posts(vault_path_str: str) -> list[dict[str, Any]]:
     return parse_instagram_posts(Path(vault_path_str))
 
 
+@st.cache_resource(ttl=3600)
+def _load_vault_graph(vault_path_str: str):
+    """Load vault graph with caching (non-serializable, uses cache_resource)."""
+    return build_vault_graph(vault_path_str)
+
+
+@st.cache_data(ttl=3600)
+def _load_graph_metrics(vault_path_str: str) -> dict:
+    """Load graph metrics with caching."""
+    G = _load_vault_graph(vault_path_str)
+    metrics = compute_centrality_metrics(G)
+    communities = detect_communities(G)
+    health = get_graph_health(G)
+    return {
+        "metrics": metrics,
+        "communities": [list(c) for c in communities],
+        "health": health,
+        "node_count": G.number_of_nodes(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Sidebar — refresh button
 # ---------------------------------------------------------------------------
@@ -94,6 +225,7 @@ def _render_sidebar() -> None:
     """Render sidebar with refresh button."""
     with st.sidebar:
         if st.button("🔄 Refresh Data", use_container_width=True):
+            st.cache_resource.clear()
             st.cache_data.clear()
             st.rerun()
 
@@ -867,9 +999,24 @@ def _render_signal_entry(signal: dict[str, str]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_agentic_hub_tab(posts: list[dict[str, Any]]) -> None:
+def _render_agentic_hub_tab(posts: list[dict[str, Any]], vault_path: Path) -> None:
     """Render Agentic Hub tab with instagram post cards, filters, and refresh."""
     st.subheader("🤖 Agentic Hub")
+
+    # Link Vault button + status — always visible, even with no posts
+    col_link_spacer, col_link_status, col_link_btn = st.columns([3, 2, 1])
+    with col_link_btn:
+        if st.button("🔗 Link Vault", key="dashboard__link_vault_btn"):
+            _run_manual_link(vault_path)
+    with col_link_status:
+        link_results = st.session_state.get("dashboard__vault_link_results")
+        if link_results is not None:
+            total = sum(link_results.values())
+            if total > 0:
+                parts = [f"{k}: {v}" for k, v in link_results.items() if v > 0]
+                st.caption(f"🔗 Last run: {total} linked — {', '.join(parts)}")
+            else:
+                st.caption("🔗 Last run: all files up to date")
 
     if not posts:
         st.info(
@@ -1085,6 +1232,97 @@ def _render_post_actions(
 
 
 # ---------------------------------------------------------------------------
+# Graph Insights tab
+# ---------------------------------------------------------------------------
+
+
+def _render_graph_insights_tab(vault_str: str) -> None:
+    """Render the Graph Insights tab with vault structure analysis.
+
+    Args:
+        vault_str: String path to the Obsidian vault root.
+    """
+    graph_data = safe_parse(
+        _load_graph_metrics, vault_str, fallback=None, label="graph metrics"
+    )
+    if graph_data is None:
+        st.warning("Graph data unavailable — check vault path.")
+        return
+
+    health = graph_data["health"]
+    metrics = graph_data["metrics"]
+    communities = graph_data["communities"]
+
+    # --- Graph Health ---
+    st.subheader("Graph Health")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Nodes", health["node_count"])
+    c2.metric("Edges", health["edge_count"])
+    c3.metric("Orphans", health["orphan_count"])
+    c4.metric("Components", health["component_count"])
+    c5.metric("Bridges", health["bridge_count"])
+
+    # --- Hub Notes ---
+    st.subheader("Hub Notes")
+    pagerank = metrics.get("pagerank", {})
+    in_degree = metrics.get("in_degree", {})
+    betweenness = metrics.get("betweenness", {})
+
+    if pagerank:
+        sorted_notes = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)[:15]
+        hub_rows = []
+        for rank, (note, pr_score) in enumerate(sorted_notes, 1):
+            btwn = betweenness.get(note)
+            hub_rows.append(
+                {
+                    "Rank": rank,
+                    "Note": note,
+                    "PageRank": f"{pr_score:.4f}",
+                    "In-Degree": in_degree.get(note, 0),
+                    "Betweenness": f"{btwn:.4f}" if btwn is not None else "—",
+                }
+            )
+        st.dataframe(hub_rows, use_container_width=True, hide_index=True)
+    else:
+        st.info("No PageRank data available.")
+
+    # --- Research Communities ---
+    st.subheader("Research Communities")
+    if communities:
+        # Sort by size descending
+        sorted_communities = sorted(communities, key=len, reverse=True)
+        large = [c for c in sorted_communities if len(c) >= 3]
+        small_count = len(sorted_communities) - len(large)
+
+        for idx, community in enumerate(large[:10], 1):
+            with st.expander(f"Cluster {idx} ({len(community)} notes)"):
+                for member in sorted(community):
+                    st.text(member)
+
+        if small_count > 0:
+            st.caption(f"{small_count} small clusters not shown")
+    else:
+        st.info("No communities detected.")
+
+    # --- Suggested Links ---
+    st.subheader("Suggested Links")
+    if pagerank:
+        G = _load_vault_graph(vault_str)
+        top_hubs = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)[:5]
+        any_suggestions = False
+        for hub_name, _ in top_hubs:
+            suggestions = suggest_links(G, hub_name, top_n=3)
+            if suggestions:
+                any_suggestions = True
+                for target, score in suggestions:
+                    st.caption(f"{hub_name} → {target} (score: {score:.2f})")
+        if not any_suggestions:
+            st.info("No link suggestions available.")
+    else:
+        st.info("No PageRank data available for link suggestions.")
+
+
+# ---------------------------------------------------------------------------
 # Main page
 # ---------------------------------------------------------------------------
 
@@ -1098,6 +1336,9 @@ def _run_dashboard() -> None:
     vault_path = get_vault_path()
     vault_str = str(vault_path)
     st.session_state["vault_path_str"] = vault_str
+
+    # Auto-link vault on first load (before parsers read files)
+    _auto_link_vault(vault_path)
 
     # Load all data through cached wrappers with graceful fallbacks
     jc_reports = safe_parse(
@@ -1115,15 +1356,18 @@ def _run_dashboard() -> None:
     )
 
     # Tab navigation
-    tab_home, tab_blog, tab_tools, tab_archive, tab_signal, tab_agentic = st.tabs(
-        [
-            "🏠 Home",
-            "✍️ Blog Queue",
-            "🔧 Tools Radar",
-            "📚 Research Archive",
-            "📰 Weekly AI Signal",
-            "🤖 Agentic Hub",
-        ]
+    tab_home, tab_blog, tab_tools, tab_archive, tab_signal, tab_agentic, tab_graph = (
+        st.tabs(
+            [
+                "🏠 Home",
+                "✍️ Blog Queue",
+                "🔧 Tools Radar",
+                "📚 Research Archive",
+                "📰 Weekly AI Signal",
+                "🤖 Agentic Hub",
+                "🕸️ Graph Insights",
+            ]
+        )
     )
 
     with tab_home:
@@ -1142,7 +1386,10 @@ def _run_dashboard() -> None:
         _render_weekly_ai_signal_tab(tldr_reports)
 
     with tab_agentic:
-        _render_agentic_hub_tab(instagram_posts)
+        _render_agentic_hub_tab(instagram_posts, vault_path)
+
+    with tab_graph:
+        _render_graph_insights_tab(vault_str)
 
 
 _run_dashboard()
