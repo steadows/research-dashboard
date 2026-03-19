@@ -1604,7 +1604,7 @@ git commit -m "feat: graph analysis engine — vault network intelligence via ob
 
 ---
 
-## Session 16: Graph-Powered Item Discovery + Graph Context in LLM Prompts [~]
+## Session 16: Graph-Powered Item Discovery + Graph Context in LLM Prompts [x]
 
 Requires Session 15 complete.
 
@@ -1797,11 +1797,11 @@ This session adds three interconnected capabilities:
 
 - [ ] **TDD**: Run `/steadows-tdd`. Confirm RED/GREEN cycle documented for both test files.
 - [ ] **Code Review**: Run `/steadows-code-review`. Focus: `smart_matcher.py` (composite dedup key, immutable copies, origin metadata separation), `prompt_builder.py` (backward compat — no graph_context arg produces identical output, `_sanitize_note_name` on all graph strings), `claude_client.py` (graph_context threading, cache version bump), `2_Project_Cockpit.py` (single `_load_project_graph_context` — no duplicated graph loading, `safe_html` on badge rendering, `discovery_source` not `source` for badges).
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. All CRITICAL/HIGH findings fixed. Verdict: PASS.
-- [ ] **Security Review**: Run `/steadows-security-review`. Focus: graph context injected into prompts — verify no prompt injection from note names; `safe_html()` on all vault-sourced strings in badges.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 16 for extractable patterns → save to `~/.claude/skills/learned/`.
+- [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Security Review**: Run `/steadows-security-review`. Focus: graph context injected into prompts — verify no prompt injection from note names; `safe_html()` on all vault-sourced strings in badges.
+- [x] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 16 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [16i] Commit [~]
+### [16i] Commit [x]
 
 ```bash
 git add src/utils/smart_matcher.py src/utils/prompt_builder.py src/utils/claude_client.py \
