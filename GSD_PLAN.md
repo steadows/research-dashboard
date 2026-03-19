@@ -19,6 +19,7 @@ After each session completes, start a **new** Claude Code session for the next o
 Sessions 3 and 4 can run concurrently (separate terminal windows) after Session 2.
 Sessions 8, 9, 10, and 11 run sequentially — each depends on the prior completing.
 Sessions 12 and 13 run sequentially after Session 11.
+Session 14 runs after Session 13.
 
 ---
 
@@ -1278,6 +1279,98 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 
 ---
 
+## Session 14: Instagram Topic Research [ ]
+
+Requires Session 13 complete.
+
+Enables Instagram posts to use the existing Workbench research pipeline with a
+topic-aware prompt that answers "how can I best use this?" instead of the
+tool-specific "should I integrate this?" framing. Post titles are preserved for
+display while shortcode remains the durable identity key.
+
+### Dependency order
+
+1. Tests (identity → prompt → UI) — all RED before implementation
+2. Identity model — shortcode key + preserved title
+3. Instagram prompt — topic-centric COSTAR + low-signal handling
+4. Workbench UI — enable research + topic preview/summary rendering
+
+### [14a] TDD — write identity-model tests first [ ]
+- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- `tests/test_instagram_workbench.py` — identity-model boundary:
+  - Instagram entries preserve `item["name"]` as the human-readable title after `add_to_workbench()`
+  - Workbench keys and `source_item_id` still resolve from `make_item_key("instagram", shortcode)`
+  - Duplicate adds remain no-ops for the same shortcode
+  - Two different posts with identical titles but different shortcodes persist as separate workbench entries
+- [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py -v -k identity` — new tests FAIL
+
+### [14b] TDD — write prompt tests [ ]
+- `tests/test_instagram_workbench.py` — prompt boundary:
+  - Instagram prompt uses topic-centric context/objective, not tool-centric framing
+  - Instagram prompt requires `## Getting Started` instead of `## How to Install`
+  - Transcript is truncated to 4000 chars in `research_agent.py` prompt builder
+  - Missing transcript does not break prompt generation
+  - Low-signal detection triggers when: no transcript, no key_points, and `len(caption.strip()) < 20`
+  - Low-signal items still generate a valid prompt (not skipped)
+- [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py -v -k prompt` — new tests FAIL
+
+### [14c] TDD — write UI/workbench integration tests [ ]
+- `tests/test_instagram_workbench.py` — UI boundary:
+  - Agentic Hub sends the original post title (not shortcode) into Workbench
+  - Workbench research button is enabled for Instagram items with status `queued` or `failed`
+  - Workbench shows topic preview before research and overview summary after research
+  - Existing tool and method research behavior is unchanged
+- `tests/test_agentic_hub.py`:
+  - Update expectations so Workbench integration keeps the title but identifies the item by shortcode
+- [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v -k "ui or agentic"` — new tests FAIL
+
+### [14d] Identity model — shortcode key + preserved title [ ]
+- In `src/pages/1_Dashboard.py`:
+  - Stop replacing the post title (`name`) with the shortcode before `add_to_workbench()`
+  - Keep Workbench button disabled by shortcode-based identity check
+- In `src/utils/workbench_tracker.py`:
+  - Introduce a shared identity helper so Instagram entries key on `shortcode` while storing the original `name` for display
+  - Preserve existing tool/method behavior unchanged
+
+### [14e] Instagram research prompt — topic-centric COSTAR [ ]
+- In `src/utils/research_agent.py`:
+  - Add source-type-aware prompt builder branch for `source_type == "instagram"`
+  - `<context>`: topic title (`name`), account, date, source_url, key_points, keywords, caption, transcript (truncated to 4000 chars in prompt builder — ingestion stays lossless)
+  - `<objective>`: identify what the post is about; research underlying tool/pattern/concept; judge actionable vs. experimental vs. informational; design minimal evaluation path
+  - `<style>` headings: `## Overview`, `## Getting Started`, `## Key APIs / Concepts`, `## Programmatic Assessment`, `## Experiment Design`, `## Safety Notes`
+  - Low-signal behavior (no transcript + no key_points + caption < 20 chars): agent still runs; `## Overview` notes thin source material; `## Programmatic Assessment` starts with `NO` unless external research finds actionable content; `## Experiment Design` recommends what evidence is needed
+  - Reuse existing subprocess/log/report machinery — no changes to launch path
+  - `<response>` still writes only `research.md`
+
+### [14f] Workbench UI — enable Instagram research [ ]
+- **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply badge patterns.
+- In `src/pages/3_Workbench.py`:
+  - Remove the `source_type == "instagram"` research disable and the "not yet wired" caption
+  - Show topic preview (title + key_points + keywords) for Instagram items before research
+  - Switch to research overview summary after research completion (same pattern as tools/methods)
+
+### [14g] Verify GREEN [ ]
+- [ ] Run `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v` — ALL tests PASS
+- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [ ] `ruff check src/ tests/` — no errors
+- [ ] `ruff format --check src/ tests/` — no formatting issues
+
+### [14h] Quality Gate [ ]
+
+**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `research_agent.py` Instagram prompt branch (transcript truncation at 4000 chars, low-signal threshold, no prompt injection from vault content, `## Getting Started` heading), `workbench_tracker.py` identity helper (shortcode key preserves title, no regression on tool/method keys), `1_Dashboard.py` Workbench button (title preserved, shortcode identity check). Security review focus: transcript content bounded before prompt injection, vault strings escaped, no user-controlled URLs in subprocess args. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 14 for extractable patterns → save to `~/.claude/skills/learned/`.
+
+### [14i] Commit [ ]
+```bash
+git add src/ tests/ GSD_PLAN.md
+git commit -m "feat: instagram topic research — topic-centric prompt, shortcode identity, workbench research enablement"
+```
+
+---
+
 ## Decisions Log
 
 | Decision | Choice | Rationale |
@@ -1311,9 +1404,13 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 | Rate limiting | 2–3s `time.sleep()` between instaloader downloads | Instagram private API has no official rate limit docs; conservative delay avoids 429s |
 | Instagram workbench key | `make_item_key("instagram", shortcode)` | Shortcode is globally unique per post; name-based keys would collide on re-titles |
 | Instagram source badge | Indigo `#6366F1` | Visually distinct from method purple (`#8B5CF6`) and tool green (`#10B981`) in Workbench |
-| Instagram research button | Disabled in Session 13 | Research agent COSTAR prompt is tool/method-shaped; instagram posts need a different prompt structure — deferred |
+| Instagram research button | Disabled in Session 13; enabled in Session 14 | Research agent COSTAR prompt is tool/method-shaped; Session 14 adds topic-centric prompt branch |
 | Transcript context in research prompt | First 4000 chars injected into `<context>` block | Keeps prompt bounded; 4000 chars ≈ 1000 tokens, well within Opus context window |
 | Agentic Hub tab position | Sixth tab in Dashboard | Ordered by data maturity: established feeds first, new ingestion sources appended |
+| Instagram identity model | Shortcode key + preserved display title | Title overwrite in Session 13 was a UX bug; separation enables human-readable Workbench cards while keeping durable duplicate detection |
+| Instagram prompt heading | `## Getting Started` replaces `## How to Install` | Not all Instagram topics are installable tools; parser only depends on `## Overview` + `## Programmatic Assessment`, so heading change is safe |
+| Low-signal threshold | No transcript + no key_points + caption < 20 chars | Concrete threshold enables deterministic testing; agent still runs and produces minimal report |
+| Instagram model routing | Same as existing research agent chain | Defer model optimization until usage patterns are observed; avoids premature cost-routing complexity |
 
 ---
 
@@ -1398,11 +1495,12 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 | `tests/test_instagram_ingester.py` | 12 | Instagram ingester unit tests — fetch, transcribe, extract, write, state management |
 | `tests/test_instagram_parser.py` | 12 | Instagram parser unit tests — frontmatter, sections, filter, round-trip |
 | `requirements.txt` | 12 | `instaloader`, `faster-whisper` added |
-| `src/pages/1_Dashboard.py` | 13 | Agentic Hub tab — account filter pills, post cards, Summarize + Workbench buttons |
-| `src/pages/3_Workbench.py` | 13 | Instagram entry rendering — indigo badge, caption synthesis line, disabled Research button |
-| `src/utils/research_agent.py` | 13 | Transcript context injection into COSTAR `<context>` block |
-| `tests/test_agentic_hub.py` | 13 | Agentic Hub tab render tests — filter, card content, button states, XSS |
-| `tests/test_instagram_workbench.py` | 13 | Instagram workbench integration — key format, transcript field, Workbench page rendering |
+| `src/pages/1_Dashboard.py` | 13, 14 | Agentic Hub tab — account filter pills, post cards, Summarize + Workbench buttons; preserve title on workbench add |
+| `src/pages/3_Workbench.py` | 13, 14 | Instagram entry rendering — indigo badge, caption synthesis line; enable Research button, topic preview/summary |
+| `src/utils/research_agent.py` | 13, 14 | Transcript context injection; Instagram topic-centric COSTAR prompt branch, low-signal handling |
+| `src/utils/workbench_tracker.py` | 8, 9, 14 | Workbench JSON state CRUD; namespaced keys, generalized schema, provenance restore; Instagram identity helper |
+| `tests/test_agentic_hub.py` | 13, 14 | Agentic Hub tab render tests — filter, card content, button states, XSS; title preservation |
+| `tests/test_instagram_workbench.py` | 13, 14 | Instagram workbench integration — key format, transcript field; identity-model, prompt, UI boundary tests |
 
 ---
 
@@ -1432,3 +1530,5 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 | instagram_state.json concurrent write | Low | Low | Atomic write (same `tempfile + os.replace` pattern as status.json); single-user local app, risk acceptable |
 | Transcript injected into research prompt exceeds context | Low | Low | Hard cap at 4000 chars in `_build_prompt`; logged at DEBUG |
 | Vault write path traversal (username field) | Low | High | Validate `username` contains only alphanumeric + `.` + `_` + `-` before using in path construction; reject with ValueError on unexpected chars |
+| Low-signal Instagram posts produce empty research | Medium | Low | Agent still runs; minimal report with `NO` assessment and evidence checklist — no new failure state |
+| Instagram title lost on workbench add | High | Medium | Identity model separates display title (`name`) from durable key (`shortcode`); Session 14 fix |
