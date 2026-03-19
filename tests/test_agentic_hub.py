@@ -193,13 +193,30 @@ class TestWorkbenchButton:
 
         wb_file = tmp_path / "workbench.json"
         post = _sample_post()
-        # Simulate adding to workbench with shortcode as name
-        wb_item = {**post, "name": post["shortcode"]}
-        add_to_workbench(wb_item, workbench_file=wb_file)
+        # Session 14: pass original post (with title as name), identity model keys on shortcode
+        add_to_workbench(post, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
         key = make_item_key("instagram", post["shortcode"])
         assert key in items
+
+    def test_workbench_preserves_post_title(self, tmp_path: Path) -> None:
+        """Workbench entry keeps original title for display, not shortcode."""
+        from utils.workbench_tracker import (
+            add_to_workbench,
+            get_workbench_item,
+            make_item_key,
+        )
+
+        wb_file = tmp_path / "workbench.json"
+        post = _sample_post()
+        add_to_workbench(post, workbench_file=wb_file)
+
+        key = make_item_key("instagram", post["shortcode"])
+        entry = get_workbench_item(key, wb_file)
+        assert entry is not None
+        assert entry["item"]["name"] == post["name"]
+        assert entry["item"]["name"] == "Test Post Title"
 
 
 # ---------------------------------------------------------------------------

@@ -206,6 +206,28 @@ def _build_entry(
 # ---------------------------------------------------------------------------
 
 
+def _identity_key(item: dict[str, Any]) -> str:
+    """Return the identity value used for workbench keying.
+
+    Instagram items key on ``shortcode`` (globally unique per post) while
+    preserving the human-readable ``name`` for display.  All other source
+    types key on ``name`` as before.
+
+    Args:
+        item: Item dict from parser.
+
+    Returns:
+        The string used as the second segment of the namespaced key.
+    """
+    source_type = item.get("source_type", "tool")
+    if source_type == "instagram":
+        shortcode = item.get("shortcode", "").strip()
+        if not shortcode:
+            raise ValueError(f"Instagram item missing shortcode: {item.get('name')!r}")
+        return shortcode
+    return item["name"]
+
+
 def add_to_workbench(
     item: dict[str, Any],
     previous_status: str = "new",
@@ -220,9 +242,9 @@ def add_to_workbench(
     """
     data = _load_workbench(workbench_file)
     source_type = item.get("source_type", "tool")
-    name = item["name"]
-    key = make_item_key(source_type, name)
-    source_item_id = make_item_key(source_type, name)
+    identity = _identity_key(item)
+    key = make_item_key(source_type, identity)
+    source_item_id = make_item_key(source_type, identity)
 
     if key in data:
         logger.debug("Item '%s' already in workbench, skipping", key)

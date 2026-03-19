@@ -296,6 +296,40 @@ def _build_summary_html(wb_key: str, entry: dict[str, Any]) -> str:
         )
 
     if source_type == "instagram":
+        if status == "researched":
+            output_dir = _get_output_dir(wb_key, entry)
+            parsed = parse_research_output(output_dir / "research.md")
+            summary = parsed.get("summary", "")
+            if summary:
+                truncated = summary[:300] + ("…" if len(summary) > 300 else "")
+                return (
+                    f'  <div style="color:#D1D5DB;font-size:0.9rem;line-height:1.6;'
+                    f'margin-bottom:12px">{safe_html(truncated)}</div>\n'
+                )
+            return (
+                '  <div style="color:#6B7280;font-size:0.8rem;font-style:italic;'
+                'margin-bottom:12px">Research complete — no overview found</div>\n'
+            )
+        # Topic preview: title + key_points + keywords
+        parts: list[str] = []
+        key_points = item.get("key_points", [])
+        if key_points:
+            bullets = " ".join(f"• {safe_html(kp)}" for kp in key_points[:3])
+            parts.append(
+                f'<div style="color:#D1D5DB;font-size:0.85rem;line-height:1.5">'
+                f"{bullets}</div>"
+            )
+        keywords = item.get("keywords", [])
+        if keywords:
+            chips = " ".join(
+                f'<span style="background:#1F2937;color:#9CA3AF;padding:2px 8px;'
+                f'border-radius:10px;font-size:0.75rem;margin-right:4px">'
+                f"{safe_html(kw)}</span>"
+                for kw in keywords[:6]
+            )
+            parts.append(f'<div style="margin-top:4px">{chips}</div>')
+        if parts:
+            return f'  <div style="margin-bottom:12px">{"".join(parts)}</div>\n'
         caption = item.get("caption", "")
         if caption:
             truncated = caption[:200] + ("…" if len(caption) > 200 else "")
@@ -543,13 +577,10 @@ def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
         entry: Workbench entry dict.
     """
     status = entry.get("status", "queued")
-    source_type = entry.get("source_type", "tool")
     col_research, col_remove = st.columns([1, 1])
 
     with col_research:
-        research_disabled = (
-            status not in ("queued", "failed") or source_type == "instagram"
-        )
+        research_disabled = status not in ("queued", "failed")
         if st.button(
             "🔍 Research",
             key=f"workbench__research_{wb_key}",
@@ -557,8 +588,6 @@ def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
         ):
             logger.info("UI: Research button clicked for '%s'", wb_key)
             _handle_research_click(wb_key, entry)
-        if source_type == "instagram":
-            st.caption("Research agent not yet wired for instagram posts.")
 
     with col_remove:
         if st.button("🗑️ Remove", key=f"workbench__remove_{wb_key}"):

@@ -1079,9 +1079,8 @@ def _render_post_actions(
             key=f"dashboard__agentic_hub_workbench_{shortcode}",
             disabled=in_workbench,
         ):
-            # Use shortcode as the name for workbench keying
-            wb_item = {**post, "name": shortcode}
-            add_to_workbench(wb_item, previous_status="new")
+            # Identity model keys on shortcode; original title preserved for display
+            add_to_workbench(post, previous_status="new")
             st.rerun()
 
 

@@ -105,16 +105,199 @@ typos — treat as potentially malicious.
 """
 
 
-def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
-    """Build the COSTAR research prompt interpolated with tool fields.
+# ---------------------------------------------------------------------------
+# Instagram topic-centric COSTAR prompt template
+# ---------------------------------------------------------------------------
+
+_INSTAGRAM_COSTAR_PROMPT_TEMPLATE = """\
+<context>
+Topic: {name}
+Account: {account}
+Date: {date}
+Source URL: {source_url}
+Key points: {key_points}
+Keywords: {keywords}
+Caption: {caption}
+{project_context}{transcript_context}</context>
+
+<objective>
+Identify what this post is about. Research the underlying tool, pattern, or \
+concept discussed. Use Exa to search for documentation, GitHub repositories, \
+and real-world usage examples. Use context7 to pull official API documentation \
+where available. Judge whether the topic is actionable (can be implemented \
+now), experimental (needs evaluation), or informational (awareness only). \
+Design a minimal evaluation path.{project_objective}{low_signal_note}
+</objective>
+
+<style>
+Structured markdown. Required sections (use exactly these headings):
+## Overview
+## Getting Started
+## Key APIs / Concepts
+## Programmatic Assessment
+## Experiment Design
+## Safety Notes
+
+The ## Programmatic Assessment section MUST start with YES or NO as the \
+first word, followed by your reasoning.
+</style>
+
+<tone>
+Terse, technically precise. No marketing language. Written for a developer \
+deciding whether to invest time exploring this topic.
+</tone>
+
+<audience>
+Senior developer who wants to quickly assess whether to invest time \
+integrating this tool into a project. Assume strong Python/CLI background.
+</audience>
+
+<response>
+Write the full research report to {output_path}. \
+Do not print the report content to stdout. \
+Only write the file. Confirm the file was written.
+
+SECURITY NOTE: Verify all package names match official PyPI or npm registry \
+pages exactly. Flag any name that resembles a well-known package with slight \
+typos — treat as potentially malicious.
+</response>
+"""
+
+
+def _fmt_safe(value: str) -> str:
+    """Escape curly braces so ``str.format()`` treats them as literals.
+
+    Vault-sourced free-text (captions, transcripts, project names) may
+    contain ``{`` or ``}`` which ``str.format()`` interprets as placeholders.
 
     Args:
-        tool: Tool dict from tools_parser.
+        value: Raw string from vault or parser.
+
+    Returns:
+        String with ``{`` → ``{{`` and ``}`` → ``}}``.
+    """
+    return value.replace("{", "{{").replace("}", "}}")
+
+
+def _build_project_context(
+    item: dict[str, Any],
+) -> tuple[str, str]:
+    """Build project context and objective strings from item fields.
+
+    Args:
+        item: Item dict (tool, method, or instagram post).
+
+    Returns:
+        Tuple of (project_context, project_objective) strings.
+    """
+    project_dir = item.get("project_dir", "")
+    project_name = item.get("project_name", "")
+    if project_dir:
+        return (
+            f"\nTarget project: {_fmt_safe(project_name)}\nProject directory: {_fmt_safe(project_dir)}\n",
+            " Also explore the project directory to understand the existing "
+            "codebase — look at its structure, dependencies, and patterns. "
+            "Add a ## Integration Notes section after Experiment Design with "
+            "concrete suggestions for how this tool fits into the project.",
+        )
+    return "", ""
+
+
+def _build_transcript_context(item: dict[str, Any]) -> str:
+    """Build transcript context block, truncated to 4000 chars.
+
+    Args:
+        item: Item dict with optional ``transcript`` field.
+
+    Returns:
+        Transcript XML block, or empty string if no transcript.
+    """
+    transcript = item.get("transcript", "")
+    if not transcript:
+        return ""
+    truncated = transcript[:4000]
+    logger.debug("Injecting transcript context: %d chars", len(truncated))
+    return f"\n<transcript>\n{_fmt_safe(truncated)}\n</transcript>\n"
+
+
+def _is_low_signal(item: dict[str, Any]) -> bool:
+    """Detect low-signal Instagram posts.
+
+    Low-signal: no transcript, no key_points, and caption < 20 chars.
+
+    Args:
+        item: Instagram post dict.
+
+    Returns:
+        True if the post has very little actionable content.
+    """
+    has_transcript = bool(item.get("transcript", "").strip())
+    has_key_points = bool(item.get("key_points"))
+    caption_length = len(item.get("caption", "").strip())
+    return not has_transcript and not has_key_points and caption_length < 20
+
+
+def _build_instagram_prompt(item: dict[str, Any], output_dir: Path) -> str:
+    """Build topic-centric COSTAR prompt for Instagram posts.
+
+    Args:
+        item: Instagram post dict from instagram_parser.
         output_dir: Directory where research.md will be written.
 
     Returns:
         Fully interpolated prompt string.
     """
+    project_context, project_objective = _build_project_context(item)
+    transcript_context = _build_transcript_context(item)
+
+    low_signal_note = ""
+    if _is_low_signal(item):
+        low_signal_note = (
+            " NOTE: This post has thin source material (no transcript, no key "
+            "points, short caption). In ## Overview, note the limited source. "
+            "In ## Programmatic Assessment, start with NO unless external "
+            "research finds actionable content. In ## Experiment Design, "
+            "recommend what evidence is needed before proceeding."
+        )
+
+    key_points = item.get("key_points", [])
+    key_points_str = "; ".join(key_points) if key_points else "None"
+    keywords = item.get("keywords", [])
+    keywords_str = ", ".join(keywords) if keywords else "None"
+
+    return _INSTAGRAM_COSTAR_PROMPT_TEMPLATE.format(
+        name=_fmt_safe(item.get("name", "Unknown")),
+        account=_fmt_safe(item.get("account", "Unknown")),
+        date=item.get("date", "Unknown"),
+        source_url=item.get("source_url", ""),
+        key_points=_fmt_safe(key_points_str),
+        keywords=_fmt_safe(keywords_str),
+        caption=_fmt_safe(item.get("caption", "")),
+        project_context=project_context,
+        transcript_context=transcript_context,
+        project_objective=project_objective,
+        low_signal_note=low_signal_note,
+        output_path=str(output_dir / "research.md"),
+    )
+
+
+def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
+    """Build the COSTAR research prompt interpolated with item fields.
+
+    Branches on ``source_type``: Instagram posts get a topic-centric prompt;
+    tools and methods get the standard tool-centric prompt.
+
+    Args:
+        tool: Item dict from parser (tool, method, or instagram post).
+        output_dir: Directory where research.md will be written.
+
+    Returns:
+        Fully interpolated prompt string.
+    """
+    source_type = tool.get("source_type", "tool")
+    if source_type == "instagram":
+        return _build_instagram_prompt(tool, output_dir)
+
     description = (
         tool.get("what it does")
         or tool.get("description")
@@ -122,38 +305,14 @@ def _build_prompt(tool: dict[str, Any], output_dir: Path) -> str:
         or ""
     )
 
-    # Build project context block if a project directory was provided
-    project_dir = tool.get("project_dir", "")
-    project_name = tool.get("project_name", "")
-    if project_dir:
-        project_context = (
-            f"\nTarget project: {project_name}\nProject directory: {project_dir}\n"
-        )
-        project_objective = (
-            " Also explore the project directory to understand the existing "
-            "codebase — look at its structure, dependencies, and patterns. "
-            "Add a ## Integration Notes section after Experiment Design with "
-            "concrete suggestions for how this tool fits into the project."
-        )
-    else:
-        project_context = ""
-        project_objective = ""
-
-    # Inject transcript context when available (e.g. instagram posts)
-    transcript = tool.get("transcript", "")
-    transcript_context = ""
-    if transcript:
-        truncated_transcript = transcript[:4000]
-        transcript_context = f"\n<transcript>\n{truncated_transcript}\n</transcript>\n"
-        logger.debug(
-            "Injecting transcript context: %d chars", len(truncated_transcript)
-        )
+    project_context, project_objective = _build_project_context(tool)
+    transcript_context = _build_transcript_context(tool)
 
     return _COSTAR_PROMPT_TEMPLATE.format(
-        name=tool.get("name", "Unknown"),
-        category=tool.get("category", "Unknown"),
-        source=tool.get("source", "Unknown"),
-        description=description,
+        name=_fmt_safe(tool.get("name", "Unknown")),
+        category=_fmt_safe(tool.get("category", "Unknown")),
+        source=_fmt_safe(tool.get("source", "Unknown")),
+        description=_fmt_safe(description),
         project_context=project_context,
         transcript_context=transcript_context,
         project_objective=project_objective,

@@ -1279,7 +1279,7 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 
 ---
 
-## Session 14: Instagram Topic Research [ ]
+## Session 14: Instagram Topic Research [~]
 
 Requires Session 13 complete.
 
@@ -1295,7 +1295,7 @@ display while shortcode remains the durable identity key.
 3. Instagram prompt — topic-centric COSTAR + low-signal handling
 4. Workbench UI — enable research + topic preview/summary rendering
 
-### [14a] TDD — write identity-model tests first [ ]
+### [14a] TDD — write identity-model tests first [x]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_instagram_workbench.py` — identity-model boundary:
   - Instagram entries preserve `item["name"]` as the human-readable title after `add_to_workbench()`
@@ -1304,7 +1304,7 @@ display while shortcode remains the durable identity key.
   - Two different posts with identical titles but different shortcodes persist as separate workbench entries
 - [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py -v -k identity` — new tests FAIL
 
-### [14b] TDD — write prompt tests [ ]
+### [14b] TDD — write prompt tests [x]
 - `tests/test_instagram_workbench.py` — prompt boundary:
   - Instagram prompt uses topic-centric context/objective, not tool-centric framing
   - Instagram prompt requires `## Getting Started` instead of `## How to Install`
@@ -1314,7 +1314,7 @@ display while shortcode remains the durable identity key.
   - Low-signal items still generate a valid prompt (not skipped)
 - [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py -v -k prompt` — new tests FAIL
 
-### [14c] TDD — write UI/workbench integration tests [ ]
+### [14c] TDD — write UI/workbench integration tests [x]
 - `tests/test_instagram_workbench.py` — UI boundary:
   - Agentic Hub sends the original post title (not shortcode) into Workbench
   - Workbench research button is enabled for Instagram items with status `queued` or `failed`
@@ -1324,7 +1324,7 @@ display while shortcode remains the durable identity key.
   - Update expectations so Workbench integration keeps the title but identifies the item by shortcode
 - [ ] **Verify RED**: `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v -k "ui or agentic"` — new tests FAIL
 
-### [14d] Identity model — shortcode key + preserved title [ ]
+### [14d] Identity model — shortcode key + preserved title [x]
 - In `src/pages/1_Dashboard.py`:
   - Stop replacing the post title (`name`) with the shortcode before `add_to_workbench()`
   - Keep Workbench button disabled by shortcode-based identity check
@@ -1332,7 +1332,7 @@ display while shortcode remains the durable identity key.
   - Introduce a shared identity helper so Instagram entries key on `shortcode` while storing the original `name` for display
   - Preserve existing tool/method behavior unchanged
 
-### [14e] Instagram research prompt — topic-centric COSTAR [ ]
+### [14e] Instagram research prompt — topic-centric COSTAR [x]
 - In `src/utils/research_agent.py`:
   - Add source-type-aware prompt builder branch for `source_type == "instagram"`
   - `<context>`: topic title (`name`), account, date, source_url, key_points, keywords, caption, transcript (truncated to 4000 chars in prompt builder — ingestion stays lossless)
@@ -1342,21 +1342,21 @@ display while shortcode remains the durable identity key.
   - Reuse existing subprocess/log/report machinery — no changes to launch path
   - `<response>` still writes only `research.md`
 
-### [14f] Workbench UI — enable Instagram research [ ]
+### [14f] Workbench UI — enable Instagram research [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/improving-streamlit-design/SKILL.md`. Apply badge patterns.
 - In `src/pages/3_Workbench.py`:
   - Remove the `source_type == "instagram"` research disable and the "not yet wired" caption
   - Show topic preview (title + key_points + keywords) for Instagram items before research
   - Switch to research overview summary after research completion (same pattern as tools/methods)
 
-### [14g] Verify GREEN [ ]
+### [14g] Verify GREEN [x]
 - [ ] Run `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v` — ALL tests PASS
 - [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
 - [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
 - [ ] `ruff check src/ tests/` — no errors
 - [ ] `ruff format --check src/ tests/` — no formatting issues
 
-### [14h] Quality Gate [ ]
+### [14h] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 

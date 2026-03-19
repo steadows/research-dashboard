@@ -19,11 +19,15 @@ from utils.workbench_tracker import (
 
 def _sample_instagram_post(
     shortcode: str = "ABC123",
-    name: str = "Test Post",
+    name: str = "How to Build RAG Pipelines",
 ) -> dict[str, Any]:
-    """Return a minimal instagram post dict for workbench testing."""
+    """Return a minimal instagram post dict for workbench testing.
+
+    Note: name is the human-readable title (not shortcode).
+    The identity model preserves this title for display while keying on shortcode.
+    """
     return {
-        "name": shortcode,  # Use shortcode as name for keying
+        "name": name,
         "account": "hubaborern",
         "date": "2026-03-15",
         "source_url": f"https://www.instagram.com/p/{shortcode}/",
@@ -205,3 +209,264 @@ class TestResearchAgentTranscriptContext:
         prompt = _build_prompt(tool, output_dir)
         assert "Cursor Tab" in prompt
         assert "<transcript>" not in prompt
+
+
+# ===========================================================================
+# Session 14: Identity model, topic-centric prompt, workbench UI
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# [14a] Identity model — shortcode key + preserved title
+# ---------------------------------------------------------------------------
+
+
+class TestInstagramIdentityModel:
+    """Instagram entries preserve name as title while keying on shortcode."""
+
+    def test_title_preserved_after_add(self, tmp_path: Path) -> None:
+        """item['name'] is the human-readable title, not the shortcode."""
+        wb_file = tmp_path / "workbench.json"
+        post = _sample_instagram_post(shortcode="XYZ789", name="Deep Dive into LoRA")
+        add_to_workbench(post, workbench_file=wb_file)
+
+        key = make_item_key("instagram", "XYZ789")
+        entry = get_workbench_item(key, wb_file)
+        assert entry is not None
+        assert entry["item"]["name"] == "Deep Dive into LoRA"
+
+    def test_key_resolves_from_shortcode(self, tmp_path: Path) -> None:
+        """Workbench key and source_item_id resolve from shortcode, not title."""
+        wb_file = tmp_path / "workbench.json"
+        post = _sample_instagram_post(shortcode="QRS456", name="My Great Post")
+        add_to_workbench(post, workbench_file=wb_file)
+
+        items = get_workbench_items(wb_file)
+        expected_key = make_item_key("instagram", "QRS456")
+        assert expected_key in items
+        assert expected_key == "instagram::QRS456"
+
+    def test_duplicate_add_noop_for_same_shortcode(self, tmp_path: Path) -> None:
+        """Adding the same shortcode twice is a no-op regardless of title."""
+        wb_file = tmp_path / "workbench.json"
+        post1 = _sample_instagram_post(shortcode="DUP001", name="First Title")
+        post2 = _sample_instagram_post(shortcode="DUP001", name="Different Title")
+        add_to_workbench(post1, workbench_file=wb_file)
+        add_to_workbench(post2, workbench_file=wb_file)
+
+        items = get_workbench_items(wb_file)
+        key = make_item_key("instagram", "DUP001")
+        assert key in items
+        # Only one entry, first title wins
+        assert items[key]["item"]["name"] == "First Title"
+        assert len([k for k in items if k.startswith("instagram::")]) == 1
+
+    def test_missing_shortcode_raises_valueerror(self, tmp_path: Path) -> None:
+        """Instagram item with empty shortcode raises ValueError."""
+        import pytest
+
+        wb_file = tmp_path / "workbench.json"
+        post = _sample_instagram_post()
+        post["shortcode"] = ""
+        with pytest.raises(ValueError, match="missing shortcode"):
+            add_to_workbench(post, workbench_file=wb_file)
+
+    def test_different_shortcodes_same_title_separate_entries(
+        self, tmp_path: Path
+    ) -> None:
+        """Two posts with identical titles but different shortcodes persist separately."""
+        wb_file = tmp_path / "workbench.json"
+        post1 = _sample_instagram_post(shortcode="UNIQ01", name="Same Title")
+        post2 = _sample_instagram_post(shortcode="UNIQ02", name="Same Title")
+        add_to_workbench(post1, workbench_file=wb_file)
+        add_to_workbench(post2, workbench_file=wb_file)
+
+        items = get_workbench_items(wb_file)
+        assert make_item_key("instagram", "UNIQ01") in items
+        assert make_item_key("instagram", "UNIQ02") in items
+        assert len([k for k in items if k.startswith("instagram::")]) == 2
+
+
+# ---------------------------------------------------------------------------
+# [14b] Prompt boundary — topic-centric COSTAR for instagram
+# ---------------------------------------------------------------------------
+
+
+class TestInstagramTopicPrompt:
+    """_build_prompt for instagram uses topic-centric context/objective."""
+
+    def test_instagram_prompt_uses_topic_context(self) -> None:
+        """Instagram prompt references topic title, account, key_points."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert "How to Build RAG Pipelines" in prompt
+        assert "hubaborern" in prompt
+
+    def test_instagram_prompt_requires_getting_started(self) -> None:
+        """Instagram prompt uses '## Getting Started' not '## How to Install'."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert "## Getting Started" in prompt
+        assert "## How to Install" not in prompt
+
+    def test_instagram_prompt_transcript_truncated_in_builder(self) -> None:
+        """Transcript is capped at 4000 chars in prompt builder."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        post["transcript"] = "W" * 8000
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        # Full 8000-char transcript must NOT appear
+        assert "W" * 8000 not in prompt
+        # But truncated version should
+        assert "W" * 4000 in prompt
+
+    def test_instagram_prompt_missing_transcript_ok(self) -> None:
+        """Missing transcript does not break prompt generation."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        del post["transcript"]
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert "How to Build RAG Pipelines" in prompt
+        assert "<transcript>" not in prompt
+
+    def test_low_signal_detection(self) -> None:
+        """Low-signal: no transcript + no key_points + caption < 20 chars."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        post["transcript"] = ""
+        post["key_points"] = []
+        post["caption"] = "short"
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert len(prompt) > 0
+        assert "How to Build RAG Pipelines" in prompt
+        # Low-signal note must appear in the prompt
+        assert "thin source material" in prompt
+
+    def test_low_signal_still_generates_valid_prompt(self) -> None:
+        """Low-signal items still produce a prompt with required headings."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        post["transcript"] = ""
+        post["key_points"] = []
+        post["caption"] = "x"
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert "## Overview" in prompt
+        assert "## Programmatic Assessment" in prompt
+        assert "thin source material" in prompt
+
+    def test_low_signal_boundary_19_chars_is_low(self) -> None:
+        """Caption of exactly 19 chars (< 20) triggers low-signal."""
+        from utils.research_agent import _is_low_signal
+
+        post = _sample_instagram_post()
+        post["transcript"] = ""
+        post["key_points"] = []
+        post["caption"] = "A" * 19
+        assert _is_low_signal(post) is True
+
+    def test_low_signal_boundary_20_chars_is_not_low(self) -> None:
+        """Caption of exactly 20 chars (not < 20) does NOT trigger low-signal."""
+        from utils.research_agent import _is_low_signal
+
+        post = _sample_instagram_post()
+        post["transcript"] = ""
+        post["key_points"] = []
+        post["caption"] = "A" * 20
+        assert _is_low_signal(post) is False
+
+    def test_not_low_signal_when_has_transcript(self) -> None:
+        """Post with transcript is not low-signal even with short caption."""
+        from utils.research_agent import _is_low_signal
+
+        post = _sample_instagram_post()
+        post["key_points"] = []
+        post["caption"] = "x"
+        # transcript is non-empty from fixture
+        assert _is_low_signal(post) is False
+
+    def test_tool_prompt_unchanged(self) -> None:
+        """Existing tool prompt still uses '## How to Install'."""
+        from utils.research_agent import _build_prompt
+
+        tool = {
+            "name": "Some Tool",
+            "category": "DevOps",
+            "source": "TLDR",
+            "description": "A dev tool.",
+        }
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(tool, output_dir)
+        assert "## How to Install" in prompt
+        assert "## Getting Started" not in prompt
+
+    def test_caption_with_curly_braces_does_not_crash(self) -> None:
+        """Captions containing {braces} must not crash str.format()."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        post["caption"] = "Use {this} for {that} — {x: 1, y: 2}"
+        output_dir = Path("/tmp/test-output")
+        # Should not raise KeyError/ValueError from str.format()
+        prompt = _build_prompt(post, output_dir)
+        assert len(prompt) > 0
+        assert "Caption:" in prompt
+
+    def test_transcript_with_curly_braces_does_not_crash(self) -> None:
+        """Transcripts containing {braces} must not crash str.format()."""
+        from utils.research_agent import _build_prompt
+
+        post = _sample_instagram_post()
+        post["transcript"] = "const data = {key: 'value', nested: {a: 1}}"
+        output_dir = Path("/tmp/test-output")
+        prompt = _build_prompt(post, output_dir)
+        assert "{key:" in prompt
+
+
+# ---------------------------------------------------------------------------
+# [14c] UI boundary — workbench research enabled for instagram
+# ---------------------------------------------------------------------------
+
+
+class TestInstagramWorkbenchUI:
+    """Workbench research button enabled for instagram; topic preview/summary."""
+
+    def test_research_enabled_for_queued_instagram(self) -> None:
+        """Research button is NOT disabled for queued instagram items."""
+        # Mirrors the updated logic in 3_Workbench.py _render_action_buttons
+        status = "queued"
+        # Session 14: source_type no longer gates research — only status matters
+        research_disabled = status not in ("queued", "failed")
+        assert research_disabled is False
+
+    def test_research_enabled_for_failed_instagram(self) -> None:
+        """Research button is NOT disabled for failed instagram items."""
+        status = "failed"
+        research_disabled = status not in ("queued", "failed")
+        assert research_disabled is False
+
+    def test_tool_research_still_works(self) -> None:
+        """Existing tool research button behavior unchanged."""
+        status = "queued"
+        research_disabled = status not in ("queued", "failed")
+        assert research_disabled is False
+
+    def test_researched_status_still_disables_button(self) -> None:
+        """Research button disabled for already-researched items regardless of type."""
+        for source_type in ("tool", "method", "instagram"):
+            status = "researched"
+            research_disabled = status not in ("queued", "failed")
+            assert research_disabled is True
