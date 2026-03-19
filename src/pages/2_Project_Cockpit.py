@@ -88,6 +88,53 @@ def _load_graph_context_data(vault_path_str: str) -> dict:
     }
 
 
+@st.cache_data(ttl=3600)
+def _compute_graph_item_counts(
+    vault_path_str: str,
+) -> dict[str, int]:
+    """Compute item counts per project including Tier 3 graph-discovered items.
+
+    Uses the same graph pipeline as the main cockpit but pre-computes counts
+    for all projects so the sidebar labels reflect graph-enhanced totals.
+
+    Args:
+        vault_path_str: Vault path string.
+
+    Returns:
+        Dict mapping project name to total item count (Tier 1+2+3).
+    """
+    project_index = build_smart_project_index(vault_path_str)
+    projects = parse_projects(Path(vault_path_str))
+
+    # Load graph data
+    try:
+        G = _load_vault_graph(vault_path_str)
+        graph_data = _load_graph_context_data(vault_path_str)
+        metrics = graph_data["metrics"]
+        communities = [frozenset(c) for c in graph_data["communities"]]
+        node_count = graph_data["node_count"]
+    except Exception:
+        logger.debug("Graph unavailable for item counts — using Tier 1+2 only")
+        return {name: len(items) for name, items in project_index.items()}
+
+    counts: dict[str, int] = {}
+    for proj in projects:
+        name = proj["name"]
+        ctx = get_project_context(G, metrics, communities, name)
+        if ctx is not None:
+            ctx = {**ctx, "node_count": node_count}
+        linked = project_index.get(name, [])
+        enhanced = get_graph_linked_items(
+            project_name=name,
+            linked_items=linked,
+            project_index=project_index,
+            graph_context=ctx,
+        )
+        counts[name] = len(enhanced)
+
+    return counts
+
+
 def _load_project_graph_context(
     vault_path_str: str, project_name: str
 ) -> dict[str, Any] | None:
@@ -123,6 +170,7 @@ def _load_project_graph_context(
 def _render_project_sidebar(
     projects: list[dict[str, Any]],
     project_index: dict[str, list[dict[str, Any]]],
+    item_counts: dict[str, int] | None = None,
 ) -> str | None:
     """Render sidebar with project selector and search filter.
 
@@ -131,6 +179,9 @@ def _render_project_sidebar(
     Args:
         projects: List of project dicts from vault.
         project_index: Mapping of project name to flagged items.
+        item_counts: Optional pre-computed item counts per project
+            (including graph-discovered Tier 3 items). Falls back to
+            project_index counts if not provided.
 
     Returns:
         Selected project name, or None if no projects.
@@ -162,7 +213,11 @@ def _render_project_sidebar(
         options = [p["name"] for p in filtered]
         labels = []
         for name in options:
-            count = len(project_index.get(name, []))
+            count = (
+                item_counts[name]
+                if item_counts and name in item_counts
+                else len(project_index.get(name, []))
+            )
             label = f"{name} ({count})" if count else name
             labels.append(label)
 
@@ -817,8 +872,15 @@ def _run_cockpit() -> None:
         _load_project_index, vault_str, fallback={}, label="project index"
     )
 
+    # Pre-compute graph-enhanced item counts for sidebar labels
+    item_counts = safe_parse(
+        _compute_graph_item_counts, vault_str, fallback=None, label="item counts"
+    )
+
     # Sidebar — project selection
-    selected_name = _render_project_sidebar(projects, project_index)
+    selected_name = _render_project_sidebar(
+        projects, project_index, item_counts=item_counts
+    )
 
     if not selected_name:
         st.caption("Select a project from the sidebar to begin.")

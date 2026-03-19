@@ -1577,12 +1577,12 @@ From research doc (`docs/research/obsidian-graph-tools.md`):
   - Wire up: add as a collapsible `st.expander("🕸️ Graph Context", expanded=False)` in the **lower metadata/context area**, alongside existing project header and context sources. Keep the current layout: title → flagged items feed → metadata/context (graph context goes here)
 
 ### [15e] Verify GREEN [x]
-- [ ] Run `pytest tests/test_graph_engine.py -v` — ALL tests PASS
-- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
-- [ ] `ruff check src/ tests/` — no errors
-- [ ] `ruff format --check src/ tests/` — no formatting issues
-- [ ] Manual smoke test: `cd src && streamlit run Home.py`
+- [x] Run `pytest tests/test_graph_engine.py -v` — ALL tests PASS
+- [x] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [x] `ruff check src/ tests/` — no errors
+- [x] `ruff format --check src/ tests/` — no formatting issues
+- [x] Manual smoke test: `cd src && streamlit run Home.py`
   - Dashboard → Graph Insights tab renders with health stats, hub notes, communities, suggested links
   - Project Cockpit → Graph Context expander shows centrality, neighbors, community, suggestions
   - Both views handle empty/missing project gracefully
@@ -1591,10 +1591,10 @@ From research doc (`docs/research/obsidian-graph-tools.md`):
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `graph_engine.py` (cached graph not mutated, 3-hop limit on link prediction, empty graph guards, frozenset serialization). Security review focus: no vault path traversal, no user-controlled input to `nx` algorithms, cached resource not modified by callers. All CRITICAL/HIGH findings fixed. Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 15 for extractable patterns → save to `~/.claude/skills/learned/`.
+- [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `graph_engine.py` (cached graph not mutated, 3-hop limit on link prediction, empty graph guards, frozenset serialization). Security review focus: no vault path traversal, no user-controlled input to `nx` algorithms, cached resource not modified by callers. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 15 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [15g] Commit [~]
+### [15g] Commit [x]
 ```bash
 git add src/utils/graph_engine.py src/pages/1_Dashboard.py src/pages/2_Project_Cockpit.py \
   tests/test_graph_engine.py tests/test_dashboard_tabs.py tests/test_cockpit_graph_context.py \
@@ -1780,13 +1780,13 @@ This session adds three interconnected capabilities:
 
 ### [16g] Verify GREEN [x]
 
-- [ ] Run `pytest tests/test_graph_linked_items.py -v` — ALL tests PASS
-- [ ] Run `pytest tests/test_prompt_builder_graph.py -v` — ALL tests PASS
-- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
-- [ ] `ruff check src/ tests/` — no errors
-- [ ] `ruff format --check src/ tests/` — no formatting issues
-- [ ] Manual smoke test: `cd src && streamlit run Home.py`
+- [x] Run `pytest tests/test_graph_linked_items.py -v` — ALL tests PASS
+- [x] Run `pytest tests/test_prompt_builder_graph.py -v` — ALL tests PASS
+- [x] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [x] `ruff check src/ tests/` — no errors
+- [x] `ruff format --check src/ tests/` — no formatting issues
+- [x] Manual smoke test: `cd src && streamlit run Home.py`
   - Project Cockpit → project with known community members → community/suggested items appear with badges
   - Analyze button → `LLM_TRACE=1` → `<graph_context>` section visible in trace log
   - Project not in graph → graceful degradation, only linked items shown
@@ -1795,8 +1795,8 @@ This session adds three interconnected capabilities:
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written.
 
-- [ ] **TDD**: Run `/steadows-tdd`. Confirm RED/GREEN cycle documented for both test files.
-- [ ] **Code Review**: Run `/steadows-code-review`. Focus: `smart_matcher.py` (composite dedup key, immutable copies, origin metadata separation), `prompt_builder.py` (backward compat — no graph_context arg produces identical output, `_sanitize_note_name` on all graph strings), `claude_client.py` (graph_context threading, cache version bump), `2_Project_Cockpit.py` (single `_load_project_graph_context` — no duplicated graph loading, `safe_html` on badge rendering, `discovery_source` not `source` for badges).
+- [x] **TDD**: Run `/steadows-tdd`. Confirm RED/GREEN cycle documented for both test files.
+- [x] **Code Review**: Run `/steadows-code-review`. Focus: `smart_matcher.py` (composite dedup key, immutable copies, origin metadata separation), `prompt_builder.py` (backward compat — no graph_context arg produces identical output, `_sanitize_note_name` on all graph strings), `claude_client.py` (graph_context threading, cache version bump), `2_Project_Cockpit.py` (single `_load_project_graph_context` — no duplicated graph loading, `safe_html` on badge rendering, `discovery_source` not `source` for badges).
 - [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [x] **Security Review**: Run `/steadows-security-review`. Focus: graph context injected into prompts — verify no prompt injection from note names; `safe_html()` on all vault-sourced strings in badges.
 - [x] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 16 for extractable patterns → save to `~/.claude/skills/learned/`.
