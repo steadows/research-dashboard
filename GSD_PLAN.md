@@ -1949,7 +1949,7 @@ git commit -m "feat: FastAPI read-only endpoints — all parsers wrapped in GET 
 
 ---
 
-## Session 19: FastAPI Mutations + WebSocket [~]
+## Session 19: FastAPI Mutations + WebSocket [x]
 
 **Scope:** All mutation endpoints (status, analysis, workbench CRUD, research agent, ingestion) plus WebSocket for research log streaming.
 
@@ -2001,7 +2001,7 @@ git commit -m "feat: FastAPI read-only endpoints — all parsers wrapped in GET 
 
 - [x] **Verify**: Run `/steadows-verify`. Build PASS, lint clean (2 lambda→def fixes), 471/471 tests PASS, coverage 77% (Session 19 code 95%+, gap is pre-existing modules). Security review PASS (0 CRITICAL, 0 HIGH). Code review: 1 MEDIUM fixed (blog-queue/draft 409 status code). Verdict: READY.
 
-### [19g] Commit [~]
+### [19g] Commit [x]
 
 ```bash
 git add api/ tests/test_api_mutations.py tests/test_api_websocket.py GSD_PLAN.md
