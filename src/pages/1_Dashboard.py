@@ -45,10 +45,10 @@ from utils.page_helpers import (
     EMPTY_NO_TOOLS,
     get_category_color,
     get_vault_path,
-    render_context_sources,
     safe_html,
     safe_parse,
 )
+from utils.page_helpers_st import render_context_sources
 from utils.paper_fetcher import get_cached_paper_context
 from utils.instagram_parser import parse_instagram_posts
 from utils.reports_parser import parse_journalclub_reports, parse_tldr_reports
@@ -999,6 +999,7 @@ def _render_signal_entry(signal: dict[str, str]) -> None:
 # ---------------------------------------------------------------------------
 
 
+@st.fragment
 def _render_agentic_hub_tab(posts: list[dict[str, Any]], vault_path: Path) -> None:
     """Render Agentic Hub tab with instagram post cards, filters, and refresh."""
     st.subheader("🤖 Agentic Hub")
@@ -1134,7 +1135,7 @@ def _run_ingester_refresh(accounts: list[str]) -> None:
     if total > 0:
         st.toast(f"Ingested {total} new posts across {len(accounts)} accounts")
         _load_instagram_posts.clear()
-        st.rerun()
+        st.rerun(scope="fragment")
     else:
         st.toast("No new posts found")
 
@@ -1218,7 +1219,7 @@ def _render_post_actions(
             with st.spinner("Summarizing with Haiku…"):
                 result = summarize_instagram_post(post)
                 st.session_state[summary_key] = result
-                st.rerun()
+                st.rerun(scope="fragment")
 
     with col_workbench:
         if st.button(
@@ -1228,7 +1229,7 @@ def _render_post_actions(
         ):
             # Identity model keys on shortcode; original title preserved for display
             add_to_workbench(post, previous_status="new")
-            st.rerun()
+            st.rerun(scope="fragment")
 
 
 # ---------------------------------------------------------------------------

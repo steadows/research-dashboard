@@ -1,6 +1,6 @@
 # GSD Plan: Research Intelligence Dashboard
 
-> **Created:** 2026-03-14 | **Revised:** 2026-03-17 | **Stack:** Python 3.11 · Streamlit · Anthropic SDK · PyYAML
+> **Created:** 2026-03-14 | **Revised:** 2026-03-22 | **Stack:** Python 3.11 · Streamlit (legacy) · FastAPI · Next.js 16 · Anthropic SDK · PyYAML
 > **Reference:** `Plans/Research Intelligence System.md` (Obsidian) — full design spec
 
 ---
@@ -20,6 +20,10 @@ Sessions 3 and 4 can run concurrently (separate terminal windows) after Session 
 Sessions 8, 9, 10, and 11 run sequentially — each depends on the prior completing.
 Sessions 12 and 13 run sequentially after Session 11.
 Session 14 runs after Session 13.
+Sessions 17–20 run sequentially (infrastructure → API read → API mutate → frontend bootstrap).
+Sessions 21 and 22 can run concurrently (separate terminal windows) after Session 20.
+Session 23 runs after both 21 and 22 complete.
+Sessions 24 and 25 run sequentially after Session 23.
 
 ---
 
@@ -107,6 +111,18 @@ Session 1 (Setup + Design)
                                                                                                               └── Session 11 (Sandbox + Vault Note)
                                                                                                                         └── Session 12 (Instagram Ingester + Parser)
                                                                                                                                   └── Session 13 (Agentic Hub Tab + Workbench Integration)
+                                                                                                                                            └── Session 14 (Instagram Topic Research)
+                                                                                                                                                      └── Session 15 (Graph Analysis Engine)
+                                                                                                                                                                └── Session 16 (Graph-Powered Item Discovery)
+                                                                                                                                                                          └── Session 17 (Migration Tooling + Streamlit Decoupling)
+                                                                                                                                                                                    └── Session 18 (FastAPI Core — Read-Only Endpoints)
+                                                                                                                                                                                              └── Session 19 (FastAPI Mutations + WebSocket)
+                                                                                                                                                                                                        └── Session 20 (Next.js Bootstrap + Design System)
+                                                                                                                                                                                                                  ├── Session 21 (Dashboard View — Next.js) ──────┐
+                                                                                                                                                                                                                  └── Session 22 (Project Cockpit + D3 Graph) ─────┤
+                                                                                                                                                                                                                                                                   └── Session 23 (Workbench + Agentic Hub Interactions)
+                                                                                                                                                                                                                                                                             └── Session 24 (Integration Testing + E2E + Polish)
+                                                                                                                                                                                                                                                                                       └── Session 25 (Cutover + Deployment)
 ```
 
 ---
@@ -1813,6 +1829,610 @@ git commit -m "feat: graph-powered item discovery — project proximity propagat
 
 ---
 
+## Session 17: Migration Tooling + Skills + Streamlit Decoupling [x]
+
+**Scope:** Symlink portfolio-v2 skills, decouple `smart_matcher.py` and `page_helpers.py` from Streamlit, scaffold `api/` and `web/` directories, update CLAUDE.md for dual-stack.
+
+**Skills:** None loaded yet (this session creates the symlinks)
+**Stitch:** N/A (infrastructure only)
+**Agent teams:**
+- Run `/steadows-code-review` after decoupling + scaffold complete
+**Concurrency:** None
+
+### [17a] Symlink Skills [x]
+
+- [x] Symlink `~/portfolio-v2/.agents/skills/framer-motion-animator/` → `.claude/skills/framer-motion-animator`
+- [x] Symlink `~/portfolio-v2/.agents/skills/framer-motion/` → `.claude/skills/framer-motion`
+- [x] Symlink `~/portfolio-v2/.agents/skills/tailwind-v4-shadcn/` → `.claude/skills/tailwind-v4-shadcn`
+- [x] Symlink `~/portfolio-v2/.agents/skills/d3-viz/` → `.claude/skills/d3-viz`
+- [x] Verify all 4 symlinks resolve correctly
+
+### [17b] TDD + Decouple smart_matcher.py [x]
+
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] Add `cachetools` to `requirements.txt`
+- [x] Replace `@st.cache_data` (line 488) with `cachetools.TTLCache`
+- [x] Remove `import streamlit` (line 9)
+- [x] Add `clear_project_index_cache()` function
+- [x] Run existing `smart_matcher` tests — all GREEN
+- [x] Verify `smart_matcher.py` importable without Streamlit: `python -c "from src.utils.smart_matcher import build_smart_project_index"`
+
+### [17c] Split page_helpers.py [x]
+
+- [x] Extract `render_context_sources()` (line 160) into `page_helpers_st.py`
+- [x] Keep pure functions in `page_helpers.py`
+- [x] Update all imports in page files (`1_Dashboard.py`, `2_Project_Cockpit.py`, `3_Workbench.py`)
+- [x] Run full test suite — all GREEN
+
+### [17d] Update CLAUDE.md [x]
+
+- [x] Add frontend skills table (`framer-motion-animator`, `framer-motion`, `tailwind-v4-shadcn`, `d3-viz`)
+- [x] Add design system reference (`docs/designs/DESIGN_SYSTEM.md`)
+- [x] Add dual-stack architecture description (FastAPI + Next.js alongside Streamlit)
+
+### [17e] Create api/ and web/ Scaffolds [x]
+
+- [x] Define import strategy: `api/` adds `src/` to `sys.path` via `api/deps.py` so `from utils.*` imports work at runtime (not just pytest)
+- [x] `api/main.py` — empty FastAPI app factory
+- [x] `api/deps.py` — dependency stubs + `sys.path` setup for `src/utils/` access
+- [x] `api/routers/` — empty directory with `__init__.py`
+- [x] `web/.gitkeep`
+- [x] Smoke test: `uvicorn api.main:app` starts without import errors (no routes yet, just app factory)
+
+### [17f] Quality Gate [x]
+
+- [x] **Verify**: Run `/steadows-verify`. All 415 tests pass, `smart_matcher.py` importable without Streamlit, lint clean, security clean. Code review issues (TTLCache thread safety, get_vault_path duplication) fixed.
+
+### [17g] Commit [~]
+
+```bash
+git add .claude/skills/ src/utils/smart_matcher.py src/utils/page_helpers.py \
+  src/utils/page_helpers_st.py src/pages/ api/ web/ CLAUDE.md GSD_PLAN.md
+git commit -m "feat: migration tooling — decouple smart_matcher from Streamlit, scaffold api/ and web/, symlink frontend skills"
+```
+
+---
+
+## Session 18: FastAPI Core — Read-Only Endpoints [ ]
+
+**Scope:** Read-only API layer — thin parser adapters plus derived read models (project index, graph-linked items, viz graph). No mutations.
+
+**Skills (MANDATORY reads):**
+- `api-design/SKILL.md` — REST resource naming, status codes, pagination, error envelope
+- `python-patterns/SKILL.md` — Pythonic idioms, type hints for Pydantic models
+
+**Stitch:** N/A (API only)
+**Agent teams:**
+- Deploy `planner` agent to design router structure before implementation
+- Run `/steadows-code-review` + `/steadows-security-review` after implementation
+**Concurrency:** [18b] app factory + [18c] routers can be written concurrently by agent team if subsections are independent
+
+### [18a] TDD: Read-Only API Tests [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] Create `tests/test_api_read.py`
+- [ ] Mock all parsers, test GET endpoints return correct shapes
+- [ ] Derived endpoint tests: `/api/project-index/{project}/graph` returns graph-linked items with stable keys; `/api/graph/{project}/viz` returns `{nodes, edges}` with globally unique IDs, collapsed duplicate edges, and valid `{nodes: [], edges: []}` for empty graphs
+- [ ] Run tests — all RED (no implementation yet)
+
+### [18b] App Factory + Dependencies [ ]
+
+- [ ] `api/main.py` — CORS configured for `localhost:3000`, include all routers
+- [ ] `api/deps.py` — vault path from env, API key from env, vault path validation
+- [ ] `api/serializers.py` — DiGraph → adjacency dict, frozenset → list, other non-JSON-serializable conversions
+
+### [18c] Read-Only Routers [ ]
+
+- [ ] `api/routers/projects.py` — GET `/api/projects`, GET `/api/projects/{name}`, GET `/api/project-index/{project}` (smart index), GET `/api/project-index/{project}/graph` (graph-linked items)
+- [ ] `api/routers/content.py` — GET `/api/methods`, GET `/api/tools`, GET `/api/blog-queue`, GET `/api/reports/{type}`, GET `/api/instagram`
+- [ ] `api/routers/graph.py` — GET `/api/graph/health`, GET `/api/graph/{project}`, GET `/api/graph/communities`, GET `/api/graph/{project}/viz` (derived visualization graph — see S22 contract)
+- [ ] `api/routers/workbench.py` — GET `/api/workbench`, GET `/api/workbench/{key}`
+- [ ] Each router imports from `src/utils/`, uses `cachetools.TTLCache` for parser results
+
+### [18d] Verify GREEN + Smoke [ ]
+
+- [ ] All `test_api_read.py` tests pass
+- [ ] `uvicorn api.main:app --reload` serves JSON at all endpoints
+- [ ] Streamlit still works (`cd src && streamlit run Home.py`)
+
+### [18e] Quality Gate [ ]
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: router structure, serializer correctness) and security review (focus: CORS config locked to localhost:3000, vault path validation, no secrets in responses). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+
+### [18f] Commit [ ]
+
+```bash
+git add api/ tests/test_api_read.py GSD_PLAN.md
+git commit -m "feat: FastAPI read-only endpoints — all parsers wrapped in GET routers"
+```
+
+---
+
+## Session 19: FastAPI Mutations + WebSocket [ ]
+
+**Scope:** All mutation endpoints (status, analysis, workbench CRUD, research agent, ingestion) plus WebSocket for research log streaming.
+
+**Skills (MANDATORY reads):**
+- `api-design/SKILL.md` — mutation patterns, idempotency, error responses
+- `python-patterns/SKILL.md` — async patterns for WebSocket handler
+
+**Stitch:** N/A (API only)
+**Agent teams:**
+- Deploy `tdd-guide` agent for test-first workflow
+- Run `/steadows-security-review` (focus: mutation input validation, WebSocket auth, subprocess injection)
+**Concurrency:** [19b] mutation routers can be split across agent team members (status+analysis vs workbench vs research+ingestion)
+
+### [19a] TDD: Mutation + WebSocket Tests [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] Create `tests/test_api_mutations.py` — all POST/DELETE/PATCH endpoints
+- [ ] Create `tests/test_api_websocket.py` — WebSocket `/ws/research/{key}`
+- [ ] Run tests — all RED
+
+### [19b] Mutation Routers [ ]
+
+- [ ] `api/routers/status.py` — POST `/api/status/{key}`, PATCH `/api/status/{key}`
+- [ ] `api/routers/analysis.py` — POST `/api/analyze` (Haiku quick), POST `/api/analyze/deep` (Sonnet deep)
+- [ ] `api/routers/research.py` — POST `/api/research/{key}` (launch agent), GET `/api/research/{key}/status`
+- [ ] `api/routers/ingestion.py` — POST `/api/instagram/refresh`
+- [ ] `api/routers/content.py` — extend with POST `/api/summarize/instagram` (Haiku summary), POST `/api/blog-queue/draft` (blog draft generation)
+- [ ] Extend `api/routers/workbench.py` — POST, DELETE, PATCH endpoints
+
+### [19c] Pydantic Models [ ]
+
+- [ ] Create `api/models.py`
+- [ ] `AnalyzeRequest`, `WorkbenchAddRequest`, `WorkbenchUpdateRequest`
+- [ ] `StatusUpdateRequest`, `IngestionRequest`, `BlogDraftRequest`
+
+### [19d] WebSocket [ ]
+
+- [ ] **Research**: Query `context7` for FastAPI WebSocket connection manager pattern (`/websites/fastapi_tiangolo` → "websocket connection manager broadcast disconnect")
+- [ ] Create `api/ws.py` — `/ws/research/{key}`
+- [ ] Poll `tail_log()` every 2s, send JSON frames
+- [ ] Close when agent exits
+
+### [19e] Verify GREEN [ ]
+
+- [ ] All mutation + WebSocket tests pass
+- [ ] Full test suite passes
+
+### [19f] Quality Gate [ ]
+
+- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, full suite PASS, coverage ≥ 80%. Includes code review (focus: Pydantic model validation, mutation idempotency) and security review (focus: Pydantic input validation, research launch path safety, WebSocket bounded by key lookup, no subprocess injection). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+
+### [19g] Commit [ ]
+
+```bash
+git add api/ tests/test_api_mutations.py tests/test_api_websocket.py GSD_PLAN.md
+git commit -m "feat: FastAPI mutation endpoints + WebSocket research log streaming"
+```
+
+---
+
+## Session 20: Next.js Bootstrap + Design System + Layout Shell [ ]
+
+**Scope:** Initialize Next.js 16, port design system from Stitch spec + portfolio-v2, port effects components, build app shell with sidebar navigation.
+
+**Skills (MANDATORY reads):**
+- `tailwind-v4-shadcn/SKILL.md` — Tailwind v4 setup, follow 4-step architecture exactly
+- `framer-motion-animator/SKILL.md` — animation patterns for effects components
+- `framer-motion/SKILL.md` — 42 performance rules (LazyMotion, useMotionValue, etc.)
+- `ui-ux-pro-max/SKILL.md` — component design patterns, spacing, accessibility baseline
+- `frontend-design/SKILL.md` — production-grade interface patterns
+- `docs/designs/DESIGN_SYSTEM.md` — full token spec, glow system, component rules
+
+**Stitch references:**
+- `docs/designs/dashboard.html` — nav bar layout, sidebar structure
+- `docs/designs/rid_dashboard.png` — visual reference for layout shell
+
+**Agent teams:**
+- Deploy `architect` agent to validate component structure before implementation
+- Deploy 2 parallel implementation agents:
+  - Agent A: CSS design system (`globals.css`) + Tailwind tokens + glow utilities
+  - Agent B: Port effects components from `~/portfolio-v2/src/components/effects/`
+- Run `/steadows-code-review` after implementation
+
+**Concurrency:** [20b] CSS + tokens and [20c] effects port are fully independent — run in parallel
+
+### [20a] Next.js Setup [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] **Research**: Query `context7` for Next.js 16 rewrite/proxy capabilities (`/vercel/next.js` → "rewrites proxy websocket upgrade next.config"). Also run `exa` search: `"next.js 16 websocket proxy rewrites"` to find community solutions. Document findings before configuring proxy.
+- [ ] `npx create-next-app@latest web/ --typescript --tailwind --app --src-dir`
+- [ ] Install deps: `framer-motion`, `d3`, `swr`, shadcn
+- [ ] API proxy in `next.config.ts`: `/api/*` → `localhost:8000`. **WebSocket note:** Next.js `rewrites` do not reliably proxy WebSocket upgrades — verify with Next 16 docs before relying on it. Fallback: frontend WebSocket hook connects directly to `ws://localhost:8000/ws/*` in dev (env var `NEXT_PUBLIC_WS_URL`), reverse proxy handles same-origin in production.
+- [ ] Frontend API client uses same-origin paths (`/api/*`) for HTTP. WebSocket URL sourced from `NEXT_PUBLIC_WS_URL` env var (defaults to same-origin `/ws/*` for production behind reverse proxy, `ws://localhost:8000` for local dev)
+
+### [20b] Design System CSS [ ]
+
+- [ ] **Reference**: Query `context7` for Tailwind v4 `@theme` directive and CSS variable patterns (`/tailwindlabs/tailwindcss.com` → "@theme custom colors animations keyframes")
+- [ ] Port all tokens from `DESIGN_SYSTEM.md` into `globals.css`
+- [ ] Colors, glow utilities (4 colors × 4 types × 2 intensities)
+- [ ] Keyframe animations, corner bracket utility
+- [ ] 0px border-radius override
+
+### [20c] Port Effects Components [ ]
+
+- [ ] Port to `web/src/components/effects/`: GlitchText, SectionReveal, CursorEffect, HUDBracket, ScanLines, AnimatedGrid, FloatingParticles, BackgroundSystem, TypeWriter, ScrollIndicator
+- [ ] Source: `~/portfolio-v2/src/components/effects/`
+- [ ] Adapt: remove portfolio-specific props, add generic `className` passthrough
+
+### [20d] Layout Shell [ ]
+
+- [ ] `layout.tsx` — BackgroundSystem + ScanLines + CursorEffect + fonts
+- [ ] Sidebar — route-aware nav with active cyan underline
+- [ ] Header — R.I.D. glitch title
+- [ ] ContentPanel — HUD bracket frame
+- [ ] Reference: `docs/designs/dashboard.html` nav structure
+
+### [20e] Shared UI Components [ ]
+
+- [ ] `HUDCard`, `Badge`, `MetricCard`, `StatusBadge`, `GlowButton`, `DataReadout`
+- [ ] All with 0px border-radius, glow (not shadow), corner brackets
+
+### [20f] API Client [ ]
+
+- [ ] `web/src/lib/api.ts` — SWR fetcher, mutation helpers, WebSocket hook
+
+### [20g] Quality Gate [ ]
+
+- [ ] `pnpm build` passes
+- [ ] Visual audit against design system
+- [ ] API proxy works (`/api/*` → FastAPI)
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [20h] Commit [ ]
+
+```bash
+git add web/ GSD_PLAN.md
+git commit -m "feat: Next.js bootstrap — design system, effects components, layout shell"
+```
+
+---
+
+## Session 21: Dashboard View — Next.js [ ]
+
+Requires Session 20 complete. **Can run concurrently with Session 22** (separate terminal windows). Both commit into `web/src/components/` — shared UI primitives must be frozen in Session 20 to avoid merge conflicts.
+
+**Scope:** Build all 7 Dashboard tabs matching the Stitch design.
+
+**Skills (MANDATORY reads):**
+- `docs/designs/DESIGN_SYSTEM.md` — token reference
+- `tailwind-v4-shadcn/SKILL.md` — component styling with Tailwind v4
+- `framer-motion-animator/SKILL.md` — tab transitions, card reveals
+- `ui-ux-pro-max/SKILL.md` — layout patterns, data density, empty states
+
+**Stitch references:**
+- `docs/designs/dashboard.html` — full layout structure, exact component hierarchy
+- `docs/designs/rid_dashboard.png` — visual comparison target
+- `docs/designs/agentic-hub.html` — Agentic Hub tab layout (text-only intel cards)
+- `docs/designs/rid_agentic_hub_v2.png` — Agentic Hub visual reference (no thumbnails)
+
+**Agent teams:**
+- Deploy 2 parallel implementation agents:
+  - Agent A: Home tab + Blog Queue tab + Research Archive tab
+  - Agent B: Tools Radar tab + Weekly AI Signal tab + Graph Insights tab
+- Agentic Hub tab built sequentially after (depends on both agents' shared components)
+- Run `/steadows-code-review` + `/steadows-security-review` after all tabs implemented (security focus: XSS in dynamic content rendering, SWR error exposure)
+
+**Concurrency:** [21b] and [21c] are fully independent tab groups — run in parallel
+
+### [21a] Dashboard Page + Tab Navigation [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] `web/src/app/dashboard/page.tsx` — SWR data fetching, animated tab component, loading skeletons
+
+### [21b] Home + Blog Queue + Research Archive Tabs [ ]
+
+- [ ] HomeTab — 4 HUD metric cards with SectionReveal entrance, sparkline preview
+- [ ] BlogQueueTab — card grid with status badges, analyze + draft actions
+- [ ] ResearchArchiveTab — JournalClub + TLDR feeds with date filters
+
+### [21c] Tools Radar + AI Signal + Graph Insights Tabs [ ]
+
+- [ ] ToolsRadarTab — category filters, status dots, dismiss/workbench actions
+- [ ] WeeklySignalTab — TLDR synthesis with cyan line chart
+- [ ] GraphInsightsTab — health metrics, hub notes, communities, suggested links
+
+### [21d] Agentic Hub Tab [ ]
+
+- [ ] Text-only intel brief cards (NO thumbnails — per design iteration)
+- [ ] Account filter pills, keyword chips
+- [ ] Summarize + Workbench buttons
+- [ ] Signal Analysis sidebar with trending topics
+- [ ] Reference: `docs/designs/agentic-hub.html`
+
+### [21e] Quality Gate [ ]
+
+- [ ] `pnpm build` passes
+- [ ] Visual comparison against all Stitch screenshots
+- [ ] All tabs render with real API data
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [21f] Commit [ ]
+
+```bash
+git add web/src/app/dashboard/ web/src/components/ GSD_PLAN.md
+git commit -m "feat: Dashboard view — 7 tabs with HUD design system (Next.js)"
+```
+
+---
+
+## Session 22: Project Cockpit + Graph Visualization [ ]
+
+Requires Session 20 complete. **Can run concurrently with Session 21** (separate terminal windows). Both commit into `web/src/components/` — shared UI primitives must be frozen in Session 20 to avoid merge conflicts.
+
+**Scope:** Build Project Cockpit with D3.js force-directed graph visualization.
+
+**Skills (MANDATORY reads):**
+- `d3-viz/SKILL.md` — D3 force-directed patterns, zoom/pan, tooltips
+- `tailwind-v4-shadcn/SKILL.md` — component styling with Tailwind v4
+- `framer-motion-animator/SKILL.md` — SectionReveal for items feed
+- `ui-ux-pro-max/SKILL.md` — data visualization UX, interactive element patterns
+- `docs/designs/DESIGN_SYSTEM.md` — node colors, edge styling
+
+**Stitch references:**
+- `docs/designs/cockpit.html` — full layout: sidebar, graph viz, linked items, actions
+- `docs/designs/rid_cockpit.png` — visual comparison target (neural map viz, tech tags, action buttons)
+
+**Agent teams:**
+- Deploy `architect` agent to design D3 ↔ React integration pattern before implementation
+- Deploy 2 parallel implementation agents:
+  - Agent A: Project sidebar + header + items feed
+  - Agent B: D3.js GraphVisualization component (force-directed, zoom/pan, HUD styling)
+- Run `/steadows-code-review` + `/steadows-security-review` after both complete (security focus: D3 tooltip XSS from vault strings, URL construction for Obsidian links)
+
+**Concurrency:** [22b] D3 graph viz and [22a]+[22c] sidebar/feed are independent — run in parallel
+
+### [22a] Project Sidebar + Selection [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] `web/src/app/cockpit/page.tsx` — SWR for projects + index + graph, URL-based project selection
+- [ ] `ProjectSidebar.tsx` — search filter, active highlight with cyan glow, status + domain badges
+
+### [22b] D3.js Graph Visualization [ ]
+
+**Data contract:** The note graph from `graph_engine.py` contains vault notes as nodes — items (methods/tools/blog) are NOT nodes (per S16 decision). The visualization graph is a **derived** representation: GET `/api/graph/{project}/viz` returns `{ nodes: [{id, type, label}], edges: [{source, target, relation}] }` where `type` ∈ `{project, method, tool, blog}` and `relation` ∈ `{linked, community, suggested}`. The API router builds this from `build_smart_project_index()` + `graph_engine` adjacency — the D3 component consumes the derived shape, never the raw note graph.
+
+**Viz contract rules:** `nodes[].id` is globally unique across types and stable across reruns. Duplicate edges are collapsed (keep highest-signal relation). Empty graphs return `{ nodes: [], edges: [] }` — D3 component renders an empty state, never errors.
+
+- [ ] `GraphVisualization.tsx` — force-directed layout from `/api/graph/{project}/viz`
+- [ ] Node colors: project=cyan, method=purple, tool=green, blog=amber
+- [ ] Edge styling: linked=solid cyan, community=solid blue, suggested=dashed amber
+- [ ] Zoom/pan, hover tooltips, HUD bracket frame
+- [ ] Use `useRef` + `useEffect` for D3 (not declarative React rendering)
+- [ ] Reference: `d3-viz/SKILL.md` force-directed pattern
+
+### [22c] Project Header + Items Feed [ ]
+
+- [ ] `ProjectHeader.tsx` — GlitchText name, tech badges, Obsidian link
+- [ ] `ItemsFeed.tsx` — cards from GET `/api/project-index/{project}/graph` (graph-linked items, defined in S18)
+- [ ] Discovery badges: community=blue, suggested=amber, linked=no badge
+- [ ] Filters by source type + status + discovery source
+
+### [22d] Analysis Actions [ ]
+
+- [ ] `AnalysisPanel.tsx` — Analyze (Haiku) + Go Deep (Sonnet) buttons
+- [ ] TypeWriter loading animation
+- [ ] Markdown result display
+- [ ] Context sources panel
+
+### [22e] Quality Gate [ ]
+
+- [ ] `pnpm build` passes
+- [ ] Visual match against cockpit screenshot
+- [ ] D3 graph renders and interacts correctly
+- [ ] Analysis flow end-to-end
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [22f] Commit [ ]
+
+```bash
+git add web/src/app/cockpit/ web/src/components/ GSD_PLAN.md
+git commit -m "feat: Project Cockpit with D3.js force-directed graph visualization (Next.js)"
+```
+
+---
+
+## Session 23: Workbench + Agentic Hub Interactions [ ]
+
+Requires Sessions 21 AND 22 complete.
+
+**Scope:** Workbench kanban pipeline with WebSocket log streaming, and Agentic Hub interactive features.
+
+**Skills (MANDATORY reads):**
+- `framer-motion-animator/SKILL.md` — layout animations for kanban cards
+- `framer-motion/SKILL.md` — `layoutId` for card transitions between columns
+- `tailwind-v4-shadcn/SKILL.md` — component styling with Tailwind v4
+- `ui-ux-pro-max/SKILL.md` — kanban layout patterns, real-time UI feedback
+- `docs/designs/DESIGN_SYSTEM.md` — badge colors, button styles
+
+**Stitch references:**
+- `docs/designs/workbench.html` — kanban layout: 3 columns, card structure, log tail, verdict badges
+- `docs/designs/rid_workbench.png` — visual comparison target
+
+**Agent teams:**
+- Deploy 2 parallel implementation agents:
+  - Agent A: Kanban view + WorkbenchCard + status transitions
+  - Agent B: WebSocket ResearchLog component + research flow state machine
+- Run `/steadows-security-review` (focus: WebSocket, research launch, mutation flows)
+
+**Concurrency:** [23a] kanban UI and [23b] WebSocket log are independent — run in parallel
+
+### [23a] Workbench Kanban [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] `web/src/app/workbench/page.tsx` — SWR for `/api/workbench`, 3-column layout (QUEUED / RESEARCHING / COMPLETED)
+- [ ] `KanbanColumn.tsx` — header + count badge + HUD bracket frame
+- [ ] `WorkbenchCard.tsx` — source badge, status, action buttons per state, Framer Motion `layoutId` for column transitions
+- [ ] Button-based transitions — no drag-and-drop (MVP)
+
+### [23b] WebSocket Research Log [ ]
+
+- [ ] `ResearchLog.tsx` — connect to `/ws/research/{key}`
+- [ ] Terminal-style display (JetBrains Mono, cyan on dark surface)
+- [ ] Auto-scroll, connection status indicator
+- [ ] Agent activity parsing
+
+### [23c] Research Flow [ ]
+
+- [ ] Start Research → WebSocket log → parse output → show verdict badge
+- [ ] Verdict: PROGRAMMATIC (green) / MANUAL (amber)
+- [ ] Actions: View Report + Start Sandbox + Open in Obsidian
+
+### [23d] Agentic Hub Interactions [ ]
+
+- [ ] Wire Summarize button (`POST /api/summarize/instagram`)
+- [ ] Wire Workbench button (`POST /api/workbench`)
+- [ ] Wire Refresh button (`POST /api/instagram/refresh` with progress indicator)
+- [ ] All from the Agentic Hub tab built in Session 21
+
+### [23e] Quality Gate [ ]
+
+- [ ] `pnpm build` passes
+- [ ] Visual match against workbench + agentic hub screenshots
+- [ ] WebSocket log streaming works with real research agent
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [23f] Commit [ ]
+
+```bash
+git add web/src/app/workbench/ web/src/components/ GSD_PLAN.md
+git commit -m "feat: Workbench kanban with WebSocket log streaming + Agentic Hub interactions (Next.js)"
+```
+
+---
+
+## Session 24: Integration Testing + E2E + Polish [ ]
+
+Requires Session 23 complete.
+
+**Scope:** Full E2E test suite, frontend unit tests, visual polish pass, accessibility.
+
+**Skills (MANDATORY reads):**
+- `docs/designs/DESIGN_SYSTEM.md` — audit every rule: corner brackets (not borders), 0px border-radius, glow (not shadow), correct fonts
+- `framer-motion/SKILL.md` — performance audit (lazy imports, Suspense, reduced motion)
+- `ui-ux-pro-max/SKILL.md` — accessibility checklist, responsive patterns, WCAG audit guide
+- `e2e-testing/SKILL.md` — Playwright patterns, Page Object Model, CI integration
+
+**Stitch references:**
+- ALL screenshots (`docs/designs/rid_*.png`) — visual comparison against every view
+
+**Agent teams:**
+- Deploy 3 parallel agents:
+  - Agent A (`e2e-runner`): Playwright E2E tests (`dashboard.spec.ts`, `cockpit.spec.ts`, `workbench.spec.ts`, `agentic-hub.spec.ts`)
+  - Agent B (`tdd-guide`): Vitest unit tests (HUDCard, Badge, GraphVisualization, KanbanColumn, API client)
+  - Agent C: Visual polish audit using `ui-ux-pro-max` skill — compare every view against Stitch screenshots, fix discrepancies
+- Run `/steadows-security-review` after tests written
+
+**Concurrency:** All 3 agents are fully independent — run in parallel
+
+### [24a] E2E Tests [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [ ] Playwright against local FastAPI + Next.js, mock Claude API at FastAPI layer
+- [ ] Test: page loads, tab navigation, project selection, analysis flow, workbench pipeline, agentic hub refresh
+
+### [24b] Frontend Unit Tests [ ]
+
+- [ ] Vitest + React Testing Library
+- [ ] Test: component rendering, props, API client, SWR hooks
+
+### [24c] Visual Polish Pass [ ]
+
+- [ ] Compare every view closely against `docs/designs/rid_*.png` — fix meaningful visual drift (missing corner brackets, wrong fonts, palette violations, animation timing), don't block on subpixel-perfect rendering
+- [ ] Use Stitch `edit_screens` MCP if design refinement needed
+
+### [24d] Accessibility + Responsive [ ]
+
+- [ ] WCAG AA contrast (4.5:1 per design system)
+- [ ] Keyboard nav for all interactive elements
+- [ ] Screen reader labels
+- [ ] `prefers-reduced-motion` on all animations
+- [ ] Responsive sidebar collapse
+
+### [24e] Performance [ ]
+
+- [ ] Lighthouse > 90
+- [ ] Lazy D3 import
+- [ ] `LazyMotion` + `m` components
+- [ ] Suspense boundaries
+- [ ] `next/image` for any images
+
+### [24f] Quality Gate [ ]
+
+- [ ] `pnpm build` + `pnpm test` + Playwright all pass
+- [ ] Python `pytest tests/` still passes
+- [ ] Lighthouse scores
+- [ ] **Verify**: Run `/steadows-verify` (both Python + Next.js). Confirm build PASS, lint clean, all test suites PASS, coverage ≥ 80%. Includes code review (focus: component quality, test coverage gaps) and security review (focus: XSS in dynamic content, WebSocket input sanitization, API client error handling). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+
+### [24g] Commit [ ]
+
+```bash
+git add web/ tests/ GSD_PLAN.md
+git commit -m "feat: E2E + unit tests, visual polish, accessibility, performance optimization"
+```
+
+---
+
+## Session 25: Cutover + Deployment [ ]
+
+Requires Session 24 complete.
+
+**Scope:** Decommission Streamlit, create unified launch scripts, update documentation.
+
+**Skills:** N/A (ops + documentation only)
+**Stitch:** N/A
+**Agent teams:**
+- Deploy `doc-updater` agent for CLAUDE.md + README updates
+- Deploy `historian` agent for final checkpoint
+**Concurrency:** [25b] deprecation + [25c] documentation can run in parallel
+
+### [25a] Create Launch Scripts [ ]
+
+- [ ] `scripts/dev.sh` — starts FastAPI port 8000 + Next.js port 3000, SIGINT traps both. Next.js proxy handles `/api/*` and `/ws/*` routing
+- [ ] `scripts/start.sh` — production: `uvicorn` (not gunicorn — needed for WebSocket support) + Node
+- [ ] `scripts/Caddyfile` (or `nginx.conf`) — reverse proxy config: `:3000` serves Next.js, `/api/*` and `/ws/*` proxy to `:8000` with WebSocket upgrade support. This is a required deliverable, not optional — same-origin routing is part of the frontend contract
+
+### [25b] Deprecate Streamlit [ ]
+
+- [ ] Move `src/pages/` → `src/legacy_pages/`
+- [ ] Move `src/Home.py` → `src/legacy_Home.py`
+- [ ] Remove `.streamlit/config.toml`
+- [ ] Remove `page_helpers_st.py`
+- [ ] Remove `streamlit` from `requirements.txt`
+- [ ] Verify: `pytest tests/` passes without Streamlit installed (tests import `utils/`, not pages)
+
+**Note:** Legacy files preserve reference/history, not immediate rollback. Restoring Streamlit would require re-adding `streamlit` to `requirements.txt` and recreating `page_helpers_st.py`. For true rollback, use `git revert`.
+
+### [25c] Update Documentation [ ]
+
+- [ ] `README.md` — new architecture, setup, dev workflow
+- [ ] `CLAUDE.md` — remove Streamlit sections, add Next.js conventions, update Architecture diagram, remove Streamlit skills table
+
+### [25d] Update Obsidian Project Note [ ]
+
+- [ ] Tech stack updated
+- [ ] Status: active
+- [ ] Overview mentions HUD rebuild
+
+### [25e] Quality Gate [ ]
+
+- [ ] `pnpm build`
+- [ ] `pytest tests/` without Streamlit
+- [ ] `scripts/dev.sh` starts both servers
+- [ ] Full E2E suite passes
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [25f] Commit [ ]
+
+```bash
+git add scripts/ src/ .streamlit/ requirements.txt README.md CLAUDE.md GSD_PLAN.md
+git commit -m "feat: cutover to Next.js + FastAPI — decommission Streamlit, unified launch scripts"
+```
+
+---
+
 ## Decisions Log
 
 | Decision | Choice | Rationale |
@@ -1869,8 +2489,8 @@ git commit -m "feat: graph-powered item discovery — project proximity propagat
 | Low-signal threshold | No transcript + no key_points + caption < 20 chars | Concrete threshold enables deterministic testing; agent still runs and produces minimal report |
 | Instagram model routing | Same as existing research agent chain | Defer model optimization until usage patterns are observed; avoids premature cost-routing complexity |
 | Graph library | `obsidiantools` + NetworkX (both direct deps) | Mature (535 stars), Python-native, gives raw NetworkX graph; all Obsidian plugins are UI-only; MCP graph servers too immature. NetworkX listed as direct dep since we import it directly, not just transitively. |
-| Graph caching | `cache_resource` for DiGraph at page layer, `cache_data` for metrics at page layer | DiGraph is not serializable by pickle; `cache_resource` stores reference. Metrics are plain dicts, safe for `cache_data`. `graph_engine.py` stays pure (no Streamlit imports) — matches existing parser/utils pattern. |
-| Graph cache invalidation | Clear both `cache_data` and `cache_resource` on any refresh | Avoids stale graph data when vault is re-linked or manually refreshed. Single invalidation contract across Dashboard refresh, Cockpit refresh, and manual vault re-link. |
+| Graph caching (Streamlit era, S15-16) | `cache_resource` for DiGraph at page layer, `cache_data` for metrics at page layer | DiGraph is not serializable by pickle; `cache_resource` stores reference. Metrics are plain dicts, safe for `cache_data`. `graph_engine.py` stays pure (no Streamlit imports) — matches existing parser/utils pattern. **Superseded by `cachetools.TTLCache` in API routers from S18+.** |
+| Graph cache invalidation (Streamlit era, S15-16) | Clear both `cache_data` and `cache_resource` on any refresh | Avoids stale graph data when vault is re-linked or manually refreshed. **Post-migration (S18+): mutation/refresh endpoints clear `TTLCache` layers instead.** |
 | Betweenness centrality guard | Skip when vault has >1000 nodes | O(VE) complexity; personal vaults are typically 200-500 notes but guard prevents degraded UX on large vaults |
 | Centrality rank scope | Among ALL vault notes | Project's rank relative to every note gives true structural importance; ranking only among projects would hide how projects relate to methods/tools/etc. |
 | Link prediction scope | 3-hop neighborhood only | Full vault Adamic-Adar is O(N²); 3-hop cutoff keeps it fast while capturing meaningful structural proximity |
@@ -1879,6 +2499,24 @@ git commit -m "feat: graph-powered item discovery — project proximity propagat
 | Cockpit graph section | Collapsed expander in lower metadata/context area (after items feed) | Graph context is supplementary — items feed remains the primary view; current layout preserved: title → items → metadata/context (graph here) |
 | Louvain seed | `seed=42` | Deterministic community detection across reruns; avoids confusing UI shifts |
 | obsidiantools connect vs gather | `connect()` only, skip `gather()` | `connect()` builds the graph from wiki-links (fast). `gather()` reads all note content (slow, unnecessary for graph-only analysis) |
+| S17: Streamlit decoupling strategy | Replace `@st.cache_data` with `cachetools.TTLCache`, split `page_helpers.py` | Enables `smart_matcher.py` import from FastAPI without Streamlit dep; pure functions stay reusable |
+| S17: api/ import strategy | `api/deps.py` adds `src/` to `sys.path` at startup | Reuses existing `from utils.*` imports without restructuring; pytest already does this via `pythonpath` config |
+| S22: Graph visualization data model | Derived viz graph (`/api/graph/{project}/viz`) built from smart index + graph engine | Raw note graph has no item nodes (S16 decision); viz graph is a purpose-built projection for D3 force layout |
+| S17: Skill source | Symlink from `~/portfolio-v2/.agents/skills/` | Single source of truth; updates in portfolio-v2 propagate automatically |
+| S18: API architecture | FastAPI app factory + router-per-domain | Standard FastAPI pattern; routers mirror existing parser boundaries |
+| S18: Serialization layer | `api/serializers.py` for DiGraph, frozenset, etc. | NetworkX types aren't JSON-serializable; centralized conversion avoids scattered `dict()` calls |
+| S18: Caching | `cachetools.TTLCache` in routers (not `@lru_cache`) | TTL matches Streamlit's `ttl=3600` pattern; avoids stale data on vault changes. Mutation/refresh endpoints (S19) must clear all relevant TTLCache layers on write. |
+| S19: WebSocket polling | 2s interval on `tail_log()` | Matches existing Streamlit polling interval; bounded by research agent key lookup |
+| S19: Pydantic models | Centralized in `api/models.py` | Single source for request/response schemas; reusable across routers |
+| S20: D3 integration | `useRef` + `useEffect` (imperative), not declarative React | D3 force simulation needs direct DOM control; React reconciliation would fight the physics engine |
+| S20: Design system source | Stitch `DESIGN_SYSTEM.md` + portfolio-v2 `globals.css` | Stitch spec is authoritative for tokens; portfolio-v2 has battle-tested CSS implementation |
+| S20: Effects components | Port from portfolio-v2, strip portfolio-specific props | Reuse proven animations; generic `className` passthrough enables composition |
+| S21+22: Concurrent sessions | Dashboard and Cockpit in separate terminals | Both commit into `web/src/components/`; shared UI primitives must be frozen in S20 before parallel work begins |
+| S22: Graph node colors | project=cyan, method=purple, tool=green | Matches existing badge color conventions from Streamlit UI |
+| S23: Kanban transitions | Button-based, no drag-and-drop | MVP simplicity; drag-and-drop adds touch/accessibility complexity for low-frequency action |
+| S23: Research log display | Terminal-style (JetBrains Mono, cyan on dark) | Matches the HUD aesthetic; familiar terminal UX for research agent output |
+| S24: Test stack | Playwright (E2E) + Vitest (unit) | Next.js ecosystem standard; Playwright handles full-stack flows, Vitest handles component isolation |
+| S25: Streamlit deprecation | Move to `legacy_*` prefix, don't delete | Preserves reference/history; true rollback via `git revert` (runtime deps are removed in same session) |
 
 ---
 
@@ -1978,6 +2616,41 @@ git commit -m "feat: graph-powered item discovery — project proximity propagat
 | `src/pages/1_Dashboard.py` | 3, 7, 8, 9, 15 | Graph Insights tab added; cache invalidation updated |
 | `src/pages/2_Project_Cockpit.py` | 5, 9, 15 | Per-project graph context section in metadata area; cache invalidation updated |
 | `requirements.txt` | 7, 12, 15 | `obsidiantools>=0.11.0,<1.0`, `networkx>=3.0` added |
+| `src/utils/smart_matcher.py` | 2, 16, 17 | Decoupled from Streamlit — `cachetools.TTLCache` replaces `@st.cache_data` |
+| `src/utils/page_helpers_st.py` | 17 | Streamlit-specific helpers extracted from `page_helpers.py` |
+| `.claude/skills/` | 17 | Symlinks to portfolio-v2 frontend skills |
+| `api/main.py` | 17, 18 | FastAPI app factory with CORS |
+| `api/deps.py` | 17, 18 | Dependency injection — vault path, API key |
+| `api/serializers.py` | 18 | Non-JSON-serializable type conversions |
+| `api/routers/projects.py` | 18 | Projects GET endpoints |
+| `api/routers/content.py` | 18 | Methods, tools, blog queue, reports GET endpoints |
+| `api/routers/graph.py` | 18 | Graph health, project graph, communities GET endpoints |
+| `api/routers/workbench.py` | 18, 19 | Workbench GET + POST/DELETE/PATCH endpoints |
+| `api/routers/status.py` | 19 | Status mutation endpoints |
+| `api/routers/analysis.py` | 19 | Analysis (Haiku quick + Sonnet deep) endpoints |
+| `api/routers/research.py` | 19 | Research agent launch + status endpoints |
+| `api/routers/ingestion.py` | 19 | Instagram refresh endpoint |
+| `api/models.py` | 19 | Pydantic request/response models |
+| `api/ws.py` | 19 | WebSocket research log streaming |
+| `tests/test_api_read.py` | 18 | Read-only API endpoint tests |
+| `tests/test_api_mutations.py` | 19 | Mutation API endpoint tests |
+| `tests/test_api_websocket.py` | 19 | WebSocket endpoint tests |
+| `web/` | 20 | Next.js 16 app (TypeScript, Tailwind, App Router) |
+| `web/src/app/globals.css` | 20 | Design system tokens, glow utilities, keyframes |
+| `web/src/components/effects/` | 20 | Ported effects: GlitchText, SectionReveal, CursorEffect, etc. |
+| `web/src/components/ui/` | 20 | HUDCard, Badge, MetricCard, StatusBadge, GlowButton, DataReadout |
+| `web/src/app/layout.tsx` | 20 | App shell — BackgroundSystem, ScanLines, Sidebar, Header |
+| `web/src/lib/api.ts` | 20 | SWR fetcher, mutation helpers, WebSocket hook |
+| `web/src/app/dashboard/page.tsx` | 21 | Dashboard page — 7 tabs |
+| `web/src/app/cockpit/page.tsx` | 22 | Project Cockpit — sidebar, graph viz, items feed, analysis |
+| `web/src/components/GraphVisualization.tsx` | 22 | D3.js force-directed graph |
+| `web/src/app/workbench/page.tsx` | 23 | Workbench kanban — 3 columns, WebSocket log |
+| `web/e2e/` | 24 | Playwright E2E test specs |
+| `web/src/__tests__/` | 24 | Vitest component unit tests |
+| `scripts/dev.sh` | 25 | Dev launch script (FastAPI + Next.js) |
+| `scripts/start.sh` | 25 | Production launch script |
+| `src/legacy_pages/` | 25 | Deprecated Streamlit pages |
+| `src/legacy_Home.py` | 25 | Deprecated Streamlit entry point |
 
 ---
 
@@ -2015,3 +2688,14 @@ git commit -m "feat: graph-powered item discovery — project proximity propagat
 | Louvain produces too many tiny communities | Medium | Low | Filter to communities with 3+ members for display; show filtered count |
 | Cached DiGraph mutated by caller | Low | High | Never mutate cached graph; `to_undirected()` creates copies; documented in docstrings |
 | PageRank doesn't converge on disconnected graph | Low | Low | `nx.pagerank` handles gracefully with default damping factor |
+| FastAPI CORS misconfiguration | Medium | High | Lock CORS to `localhost:3000` only; `/steadows-verify` security review stage checks CORS headers |
+| DiGraph serialization breaks JSON response | Medium | Medium | `api/serializers.py` centralizes all non-JSON-serializable conversions; tested in `test_api_read.py` |
+| Next.js API proxy masks backend errors | Medium | Medium | Proxy passes status codes through; frontend shows error states with original status |
+| D3 force simulation performance on large graphs | Medium | Medium | Limit node count in API response; use `d3.forceSimulation().stop()` + manual tick for SSR |
+| WebSocket connection drops during research | Medium | Low | Frontend reconnect logic with exponential backoff; research log persisted server-side |
+| Portfolio-v2 skill symlinks break on different machine | Medium | Low | Document setup step; CI clones both repos; `.gitignore` excludes symlinks |
+| Streamlit removal breaks existing tests | Medium | High | Tests import from `src/utils/` not pages; verify in Session 25 with Streamlit uninstalled |
+| Framer Motion bundle size | Medium | Low | `LazyMotion` + dynamic imports; only load features used per page |
+| Next.js 16 breaking changes | Low | Medium | Pin exact version in `package.json`; test against canary before upgrade |
+| Concurrent Sessions 21+22 create merge conflicts | Low | Medium | Separate directories (`dashboard/` vs `cockpit/`); shared components built in Session 20 |
+| Design system drift between Stitch and implementation | Medium | Medium | Session 24 visual polish pass compares every view closely against screenshots — fix meaningful visual drift, don't block on subpixel rendering |

@@ -173,12 +173,12 @@ class TestStatusPersistence:
 class TestPageHelpers:
     """Tests for shared page utility functions."""
 
-    def test_get_vault_path_returns_path(self) -> None:
+    def test_get_vault_path_returns_path(self, tmp_path: Path) -> None:
         """get_vault_path returns a Path object from env var."""
-        with patch.dict("os.environ", {"OBSIDIAN_VAULT_PATH": "/tmp/test-vault"}):
+        with patch.dict("os.environ", {"OBSIDIAN_VAULT_PATH": str(tmp_path)}):
             result = get_vault_path()
             assert isinstance(result, Path)
-            assert str(result) == "/tmp/test-vault"
+            assert result == tmp_path
 
     def test_get_vault_path_missing_env_raises(self) -> None:
         """get_vault_path raises ValueError when env var is missing."""

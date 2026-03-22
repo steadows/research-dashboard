@@ -2,11 +2,12 @@
 
 import logging
 import re
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import streamlit as st
+from cachetools import TTLCache
 
 from utils.blog_queue_parser import parse_blog_queue
 from utils.cockpit_components import get_project_overview
@@ -485,7 +486,22 @@ def _sort_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
-@st.cache_data(ttl=3600)
+_smart_index_cache: TTLCache[str, dict[str, list[dict[str, Any]]]] = TTLCache(
+    maxsize=16, ttl=3600
+)
+_smart_index_lock = threading.Lock()
+
+
+def clear_project_index_cache() -> None:
+    """Clear the smart project index cache.
+
+    Call this when vault data has changed and cached results should be
+    invalidated (e.g., after ingestion or status updates).
+    """
+    with _smart_index_lock:
+        _smart_index_cache.clear()
+
+
 def build_smart_project_index(
     vault_path_str: str,
 ) -> dict[str, list[dict[str, Any]]]:
@@ -498,6 +514,9 @@ def build_smart_project_index(
     Duplicate matches (same item already explicitly linked) are excluded from
     inferred results.
 
+    Results are cached with a 1-hour TTL. Call ``clear_project_index_cache()``
+    to invalidate early.
+
     Args:
         vault_path_str: String path to the Obsidian vault root.
 
@@ -506,6 +525,10 @@ def build_smart_project_index(
         Each item includes 'match_type' ("explicit"|"inferred") and
         'confidence' (float 0.0-1.0).
     """
+    with _smart_index_lock:
+        if vault_path_str in _smart_index_cache:
+            return _smart_index_cache[vault_path_str]
+
     vault_path = Path(vault_path_str)
 
     # Parse all item sources
@@ -545,6 +568,8 @@ def build_smart_project_index(
         inferred_count,
     )
 
+    with _smart_index_lock:
+        _smart_index_cache[vault_path_str] = sorted_index
     return sorted_index
 
 

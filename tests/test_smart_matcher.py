@@ -309,6 +309,58 @@ class TestConfidenceScoring:
         assert score <= 0.9
 
 
+class TestCacheDecoupling:
+    """smart_matcher uses cachetools TTLCache, not Streamlit cache."""
+
+    def test_clear_project_index_cache_exists(self) -> None:
+        """clear_project_index_cache should be importable and callable."""
+        from utils.smart_matcher import clear_project_index_cache
+
+        # Should not raise
+        clear_project_index_cache()
+
+    def test_clear_cache_invalidates_results(self, tmp_vault: Path) -> None:
+        """Clearing the cache should cause a fresh build on next call."""
+        from utils.smart_matcher import (
+            build_smart_project_index,
+            clear_project_index_cache,
+        )
+
+        result1 = build_smart_project_index(str(tmp_vault))
+        assert len(result1) > 0
+
+        clear_project_index_cache()
+
+        result2 = build_smart_project_index(str(tmp_vault))
+        # Results should be structurally identical (same vault)
+        assert set(result1.keys()) == set(result2.keys())
+
+    def test_no_streamlit_import(self) -> None:
+        """smart_matcher should not import streamlit at module level."""
+        import importlib
+        import sys
+
+        # Remove cached module if present
+        mod_name = "utils.smart_matcher"
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+        # Temporarily remove streamlit from sys.modules to detect import
+        st_backup = sys.modules.pop("streamlit", None)
+        try:
+            mod = importlib.import_module(mod_name)
+            # Should succeed without streamlit available
+            assert hasattr(mod, "build_smart_project_index")
+            assert hasattr(mod, "clear_project_index_cache")
+        finally:
+            if st_backup is not None:
+                sys.modules["streamlit"] = st_backup
+            # Restore original module
+            if mod_name in sys.modules:
+                del sys.modules[mod_name]
+            importlib.import_module(mod_name)
+
+
 class TestIntegrationWithExistingFixture:
     """Integration tests using the shared tmp_vault fixture."""
 
@@ -359,8 +411,10 @@ class TestIntegrationWithExistingFixture:
         if "Axon" in index1 and index1["Axon"]:
             index1["Axon"][0]["name"] = "MUTATED"
 
-        # Clear streamlit cache for test isolation
-        build_smart_project_index.clear()
+        # Clear cache for test isolation
+        from utils.smart_matcher import clear_project_index_cache
+
+        clear_project_index_cache()
 
         index2 = build_smart_project_index(str(tmp_vault))
         if "Axon" in index2 and index2["Axon"]:

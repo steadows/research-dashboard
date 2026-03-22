@@ -45,6 +45,19 @@ ruff format src/ tests/
 - `claude_client.py` — Anthropic SDK wrapper with LLM trace logging
 - `prompt_builder.py` — Prompt construction for quick/deep analysis
 - `cockpit_components.py` — Reusable Project Cockpit UI components
+- `page_helpers.py` — Pure utility functions (no Streamlit dependency)
+- `page_helpers_st.py` — Streamlit-dependent UI helpers (render_context_sources)
+- `smart_matcher.py` — Hybrid item-to-project matching (no Streamlit dependency, uses cachetools)
+
+### Dual-Stack Architecture
+
+The project is migrating from Streamlit-only to a dual-stack architecture:
+
+- **Streamlit** (`src/`) — Current frontend, progressively delegating logic to shared utilities
+- **FastAPI** (`api/`) — REST/WebSocket API layer reusing `src/utils/` parsers and business logic
+- **Next.js** (`web/`) — Future React frontend consuming the FastAPI endpoints
+
+Shared utilities in `src/utils/` are being decoupled from Streamlit so they can be imported by both the Streamlit app and the FastAPI layer. Use `cachetools.TTLCache` instead of `@st.cache_data` in any module that needs to be Streamlit-independent.
 
 ### Data Flow
 1. **Scheduled tasks** (Monday 7:30am JournalClub, Friday 8am TLDR) write markdown to Obsidian vault
@@ -93,7 +106,7 @@ This project follows the GSD protocol. The implementation plan lives at `GSD_PLA
 - Docstrings on all public functions and classes
 - Functions under 50 lines — extract helpers when exceeding
 - `pathlib.Path` for all file operations (never `os.path`)
-- `@st.cache_data(ttl=3600)` on all parser functions
+- `@st.cache_data(ttl=3600)` on Streamlit-only parser functions; `cachetools.TTLCache` in shared modules
 - Module-level logger: `logger = logging.getLogger(__name__)`
 - Session state keys namespaced: `dashboard__*`, `cockpit__*`
 - Never call Claude API directly from page files — route through `claude_client.py`
@@ -119,6 +132,21 @@ When working on Streamlit features, consult the skill files in `~/.claude/skills
 | Code organization, splitting modules | `organizing-streamlit-code` |
 
 Parent skill with routing guide: `~/.claude/skills/developing-with-streamlit/SKILL.md`
+
+## Frontend Skills Reference (Next.js Migration)
+
+Symlinked from `portfolio-v2` for the dual-stack migration:
+
+| Skill | Purpose |
+|-------|---------|
+| `framer-motion-animator` | Animation patterns for effects components |
+| `framer-motion` | 42 performance rules (LazyMotion, useMotionValue, etc.) |
+| `tailwind-v4-shadcn` | Tailwind v4 setup, 4-step architecture |
+| `d3-viz` | D3.js visualization patterns |
+
+## Design System Reference
+
+Full design token spec lives at `docs/designs/DESIGN_SYSTEM.md`. Includes glow system, component rules, and visual references for the Next.js frontend.
 
 ## LLM Trace Logging
 
