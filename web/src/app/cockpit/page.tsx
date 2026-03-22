@@ -43,9 +43,8 @@ export default function CockpitPage() {
     setSelectedProject(name);
   }, []);
 
-  const handleNodeClick = useCallback((nodeId: string) => {
+  const handleNodeClick = useCallback((_nodeId: string) => {
     // Future: scroll to item in feed or highlight it
-    console.log("Node clicked:", nodeId);
   }, []);
 
   const emptyGraph: GraphData = { nodes: [], edges: [] };
