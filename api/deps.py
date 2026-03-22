@@ -4,14 +4,23 @@ import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import HTTPException
+
+# ---------------------------------------------------------------------------
+# Load .env.local — ensures OBSIDIAN_VAULT_PATH and ANTHROPIC_API_KEY are
+# available to the FastAPI process (Streamlit loads these in Home.py).
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / ".env.local")
 
 # ---------------------------------------------------------------------------
 # Path setup — ensure src/ is on sys.path so `from utils.*` imports work
 # at runtime (not just under pytest which configures pythonpath separately).
 # ---------------------------------------------------------------------------
 
-_SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+_SRC_DIR = _PROJECT_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.append(str(_SRC_DIR))
 

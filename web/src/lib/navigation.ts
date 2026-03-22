@@ -1,9 +1,16 @@
-/** Shared navigation routes — single source of truth for Header + Sidebar */
+/** Header navigation routes — primary page-level navigation */
 export const NAV_ROUTES = [
-  { href: "/", label: "DASHBOARD", sidebarLabel: "INTEL" },
-  { href: "/cockpit", label: "COCKPIT", sidebarLabel: "SENSORS" },
-  { href: "/workbench", label: "WORKBENCH", sidebarLabel: "UPLINK" },
-  { href: "/agentic-hub", label: "AGENTIC HUB", sidebarLabel: "ARCHIVE" },
+  { href: "/", label: "DASHBOARD" },
+  { href: "/cockpit", label: "COCKPIT" },
+  { href: "/workbench", label: "WORKBENCH" },
+  { href: "/agentic-hub", label: "AGENTIC HUB" },
+] as const;
+
+/** Sidebar utility routes — secondary tools (not page navigation) */
+export const SIDEBAR_ROUTES = [
+  { href: "/archive", label: "ARCHIVE" },
+  { href: "/graph", label: "GRAPH" },
 ] as const;
 
 export type NavRoute = (typeof NAV_ROUTES)[number];
+export type SidebarRoute = (typeof SIDEBAR_ROUTES)[number];

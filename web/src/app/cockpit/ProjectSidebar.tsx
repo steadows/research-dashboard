@@ -74,6 +74,7 @@ export function ProjectSidebar({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="FILTER..."
+            aria-label="Filter projects"
             className="w-full border-none bg-transparent p-0 font-mono text-xs text-text-primary placeholder:text-outline/40 focus:outline-none focus:ring-0"
           />
         </div>

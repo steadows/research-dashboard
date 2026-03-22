@@ -26,9 +26,9 @@ function MetricCards() {
           index="[01]"
           title="Papers"
           value={pad(data.papers)}
-          delta="+2.4% \u0394"
+          delta={"+2.4% \u0394"}
           deltaColor="green"
-          meta="40.7128\u00b0 N"
+          meta={"40.7128\u00b0 N"}
         />
       </SectionRevealItem>
       <SectionRevealItem>
@@ -38,7 +38,7 @@ function MetricCards() {
           value={pad(data.tools)}
           delta="SYNCED"
           deltaColor="amber"
-          meta="74.0060\u00b0 W"
+          meta={"74.0060\u00b0 W"}
         />
       </SectionRevealItem>
       <SectionRevealItem>

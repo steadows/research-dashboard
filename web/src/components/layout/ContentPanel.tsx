@@ -27,6 +27,7 @@ export function ContentPanel({
       status={status}
       accentColor="cyan"
       animated
+      corners={false}
       className={cn("bg-bg-surface/50", className)}
     >
       {children}

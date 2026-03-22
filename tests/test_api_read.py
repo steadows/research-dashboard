@@ -512,12 +512,13 @@ class TestContentRouter:
         assert data[0]["name"] == "Cursor Tab"
 
     def test_get_blog_queue(self, client: TestClient) -> None:
-        """GET /api/blog-queue returns list of blog items."""
+        """GET /api/blog-queue returns mapped BlogItem list."""
         resp = client.get("/api/blog-queue")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        assert data[0]["source_type"] == "blog"
+        assert "title" in data[0]
+        assert "status" in data[0]
 
     def test_get_reports_journalclub(self, client: TestClient) -> None:
         """GET /api/reports/journalclub returns JournalClub reports."""
@@ -540,13 +541,47 @@ class TestContentRouter:
         resp = client.get("/api/reports/invalid")
         assert resp.status_code == 400
 
+    def test_get_dashboard_stats(self, client: TestClient) -> None:
+        """GET /api/dashboard/stats returns aggregated counts."""
+        resp = client.get("/api/dashboard/stats")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "papers" in data
+        assert "tools" in data
+        assert "blog_queue" in data
+        assert "active_projects" in data
+        assert all(isinstance(v, int) for v in data.values())
+
+    def test_get_reports_unified(self, client: TestClient) -> None:
+        """GET /api/reports returns merged JournalClub + TLDR reports."""
+        resp = client.get("/api/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert all(r["type"] in ("journalclub", "tldr") for r in data)
+        assert "title" in data[0]
+        assert "date" in data[0]
+
     def test_get_instagram(self, client: TestClient) -> None:
-        """GET /api/instagram returns list of instagram posts."""
+        """GET /api/instagram returns raw parser output."""
         resp = client.get("/api/instagram")
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
         assert data[0]["source_type"] == "instagram"
+
+    def test_get_instagram_feed(self, client: TestClient) -> None:
+        """GET /api/instagram/feed returns mapped InstagramPost list."""
+        resp = client.get("/api/instagram/feed")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        post = data[0]
+        assert "id" in post
+        assert "title" in post
+        assert "account" in post
+        assert "timestamp" in post
+        assert "key_points" in post
 
 
 # ===================================================================

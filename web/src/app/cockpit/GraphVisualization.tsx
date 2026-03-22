@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import * as d3 from "d3";
+import type * as D3 from "d3";
 import type { GraphData, SimNode, SimEdge } from "./types";
 import { NODE_COLORS, EDGE_STYLES, NODE_RADIUS } from "./types";
 
@@ -35,10 +35,18 @@ export function GraphVisualization({
     type: string;
   } | null>(null);
 
-  const renderGraph = useCallback(() => {
+  const d3Ref = useRef<typeof D3 | null>(null);
+
+  const renderGraph = useCallback(async () => {
     const svg = svgRef.current;
     const container = containerRef.current;
     if (!svg || !container) return;
+
+    // Lazy-load D3 on first render
+    if (!d3Ref.current) {
+      d3Ref.current = await import("d3");
+    }
+    const d3 = d3Ref.current;
 
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -167,7 +175,7 @@ export function GraphVisualization({
         d.fy = null;
       });
 
-    (nodeGroup as d3.Selection<SVGCircleElement, SimNode, SVGGElement, unknown>).call(drag);
+    (nodeGroup as D3.Selection<SVGCircleElement, SimNode, SVGGElement, unknown>).call(drag);
 
     // Force simulation
     const simulation = d3
@@ -197,20 +205,39 @@ export function GraphVisualization({
   }, [data, onNodeClick]);
 
   useEffect(() => {
-    const simulation = renderGraph();
+    let simulation: D3.Simulation<SimNode, SimEdge> | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let mounted = true;
 
-    const handleResize = () => {
-      renderGraph();
+    const init = async () => {
+      const sim = await renderGraph();
+      if (!mounted) {
+        sim?.stop();
+        return;
+      }
+      simulation = sim;
+
+      resizeObserver = new ResizeObserver(() => {
+        renderGraph().then((newSim) => {
+          if (!mounted) {
+            newSim?.stop();
+            return;
+          }
+          simulation?.stop();
+          simulation = newSim;
+        });
+      });
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
     };
 
-    const resizeObserver = new ResizeObserver(handleResize);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
+    init();
 
     return () => {
+      mounted = false;
       simulation?.stop();
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
     };
   }, [renderGraph]);
 

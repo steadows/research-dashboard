@@ -47,10 +47,10 @@ export function GraphInsightsTab() {
               <DataReadout label="ORPHAN NODES" value={data.orphan_nodes} color={data.orphan_nodes > 5 ? "amber" : "green"} />
             </div>
             <div className="bg-bg-surface border border-outline-variant/20 p-4">
-              <DataReadout label="AVG DEGREE" value={data.avg_degree.toFixed(2)} color="cyan" />
+              <DataReadout label="AVG DEGREE" value={(data.avg_degree ?? 0).toFixed(2)} color="cyan" />
             </div>
             <div className="bg-bg-surface border border-outline-variant/20 p-4">
-              <DataReadout label="DENSITY" value={data.density.toFixed(4)} color="cyan" />
+              <DataReadout label="DENSITY" value={(data.density ?? 0).toFixed(4)} color="cyan" />
             </div>
           </div>
 

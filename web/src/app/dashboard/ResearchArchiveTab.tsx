@@ -9,6 +9,8 @@ import type { ReportItem } from "./types";
 type FilterType = "all" | "journalclub" | "tldr";
 
 function ReportCard({ item }: { item: ReportItem }) {
+  const [expanded, setExpanded] = useState(false);
+
   const borderColor =
     item.type === "journalclub" ? "border-accent-green" : "border-accent-amber";
   const badgeVariant = item.type === "journalclub" ? "journalclub" : "tldr";
@@ -16,7 +18,10 @@ function ReportCard({ item }: { item: ReportItem }) {
 
   return (
     <div
-      className={`bg-bg-surface p-5 border-l-4 ${borderColor} group hover:bg-surface-high/50 transition-colors`}
+      className={`bg-bg-surface p-5 border-l-4 ${borderColor} group transition-all duration-150 cursor-pointer ${
+        expanded ? "ring-1 ring-accent-cyan/30" : "hover:bg-surface-high/50"
+      }`}
+      onClick={() => setExpanded((prev) => !prev)}
     >
       <div className="flex justify-between items-start mb-3">
         <h3 className="font-mono font-bold text-white group-hover:text-accent-cyan transition-colors pr-3">
@@ -29,7 +34,7 @@ function ReportCard({ item }: { item: ReportItem }) {
       </p>
       {item.highlights && item.highlights.length > 0 && (
         <ul className="space-y-2 text-sm text-text-primary">
-          {item.highlights.slice(0, 3).map((h, i) => (
+          {item.highlights.slice(0, expanded ? undefined : 3).map((h, i) => (
             <li key={i} className="flex items-start gap-2">
               <span className="mt-1.5 h-1 w-1 shrink-0 bg-accent-cyan" />
               {h}
@@ -37,12 +42,44 @@ function ReportCard({ item }: { item: ReportItem }) {
           ))}
         </ul>
       )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-3" onClick={(e) => e.stopPropagation()}>
+          {item.source && (
+            <div>
+              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                Source
+              </p>
+              <p className="font-mono text-[11px] text-accent-cyan/70">{item.source}</p>
+            </div>
+          )}
+          {item.file_path && (
+            <div>
+              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                File
+              </p>
+              <p className="font-mono text-[11px] text-outline">{item.file_path}</p>
+            </div>
+          )}
+          <p className="font-mono text-[9px] text-accent-cyan/40 uppercase tracking-widest pt-2">
+            CLICK TO COLLAPSE
+          </p>
+        </div>
+      )}
+
+      {/* Expand indicator */}
+      {!expanded && item.highlights && item.highlights.length > 3 && (
+        <p className="mt-2 text-[9px] font-mono text-accent-cyan/50">
+          +{item.highlights.length - 3} more sections...
+        </p>
+      )}
     </div>
   );
 }
 
 /**
- * ResearchArchiveTab — Full archive of JournalClub + TLDR reports with filter.
+ * ResearchArchiveTab — Full archive of JournalClub + TLDR reports with filter and expandable cards.
  */
 export function ResearchArchiveTab() {
   const { data, isLoading } = useReports();

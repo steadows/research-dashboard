@@ -45,15 +45,17 @@ export function DashboardView() {
     <div className="space-y-6">
       <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <Suspense fallback={<TabFallback />}>
-        {activeTab === "home" && <HomeTab />}
-        {activeTab === "blog-queue" && <BlogQueueTab />}
-        {activeTab === "research-archive" && <ResearchArchiveTab />}
-        {activeTab === "tools-radar" && <ToolsRadarTab />}
-        {activeTab === "ai-signal" && <AISignalTab />}
-        {activeTab === "graph-insights" && <GraphInsightsTab />}
-        {activeTab === "agentic-hub" && <AgenticHubTab />}
-      </Suspense>
+      <div id={`tabpanel-${activeTab}`} role="tabpanel" aria-labelledby={activeTab}>
+        <Suspense fallback={<TabFallback />}>
+          {activeTab === "home" && <HomeTab />}
+          {activeTab === "blog-queue" && <BlogQueueTab />}
+          {activeTab === "research-archive" && <ResearchArchiveTab />}
+          {activeTab === "tools-radar" && <ToolsRadarTab />}
+          {activeTab === "ai-signal" && <AISignalTab />}
+          {activeTab === "graph-insights" && <GraphInsightsTab />}
+          {activeTab === "agentic-hub" && <AgenticHubTab />}
+        </Suspense>
+      </div>
     </div>
   );
 }

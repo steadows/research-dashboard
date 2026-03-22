@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { MotionProvider } from "@/components/effects/MotionProvider";
 import { BackgroundSystem } from "@/components/effects/BackgroundSystem";
 import { ScanLines } from "@/components/effects/ScanLines";
 import { CursorEffect } from "@/components/effects/CursorEffect";
@@ -41,16 +42,18 @@ export default function RootLayout({
       className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable} dark h-full`}
     >
       <body className="min-h-full bg-bg-base text-text-primary font-sans antialiased">
-        <BackgroundSystem />
-        <ScanLines />
-        <CursorEffect />
-        <Header />
-        <div className="flex min-h-screen pt-16">
-          <Sidebar />
-          <main className="flex-1 ml-0 md:ml-20 p-6 overflow-x-hidden relative z-10">
-            {children}
-          </main>
-        </div>
+        <MotionProvider>
+          <BackgroundSystem />
+          <ScanLines />
+          <CursorEffect />
+          <Header />
+          <div className="flex min-h-screen pt-16">
+            <Sidebar />
+            <main className="flex-1 ml-0 md:ml-20 p-6 overflow-x-hidden relative z-10">
+              {children}
+            </main>
+          </div>
+        </MotionProvider>
       </body>
     </html>
   );

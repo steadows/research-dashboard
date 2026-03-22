@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>R.I.D. AGENTIC HUB</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "outline": "#849495",
+                        "on-error": "#690005",
+                        "on-primary": "#00363a",
+                        "surface": "#0A0A0F",
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-surface": "#e4e1e9",
+                        "on-error-container": "#ffdad6",
+                        "on-surface-variant": "#b9cacb",
+                        "on-primary-container": "#006970",
+                        "inverse-on-surface": "#303036",
+                        "on-background": "#e4e1e9",
+                        "surface-container-high": "#2a292f",
+                        "secondary-fixed": "#4dffb2",
+                        "tertiary-fixed": "#ffdea8",
+                        "primary-container": "#00f0ff",
+                        "background": "#0A0A0F",
+                        "on-secondary": "#003822",
+                        "surface-bright": "#39383e",
+                        "primary": "#dbfcff",
+                        "on-tertiary-fixed": "#271900",
+                        "on-tertiary": "#412d00",
+                        "tertiary-fixed-dim": "#ffba20",
+                        "tertiary-container": "#ffd386",
+                        "surface-tint": "#00dbe9",
+                        "surface-container-low": "#12121A",
+                        "error": "#ffb4ab",
+                        "surface-variant": "#35343a",
+                        "surface-container": "#1f1f25",
+                        "on-secondary-fixed-variant": "#005234",
+                        "error-container": "#93000a",
+                        "primary-fixed": "#7df4ff",
+                        "on-tertiary-container": "#7d5800",
+                        "inverse-primary": "#006970",
+                        "on-tertiary-fixed-variant": "#5e4200",
+                        "tertiary": "#fff4e8",
+                        "secondary": "#f4fff5",
+                        "on-primary-fixed": "#002022",
+                        "inverse-surface": "#e4e1e9",
+                        "secondary-fixed-dim": "#00e297",
+                        "surface-container-lowest": "#0e0e13",
+                        "secondary-container": "#00ffab",
+                        "surface-dim": "#0A0A0F",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-secondary-container": "#007149",
+                        "outline-variant": "#3b494b",
+                        "surface-container-highest": "#35343a",
+                        "on-secondary-fixed": "#002112"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: { "DEFAULT": "0rem", "lg": "0rem", "xl": "0rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .scan-line {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .corner-bracket::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 8px;
+            height: 8px;
+            border-top: 1px solid #00F0FF;
+            border-left: 1px solid #00F0FF;
+        }
+        .corner-bracket::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 8px;
+            height: 8px;
+            border-bottom: 1px solid #00F0FF;
+            border-right: 1px solid #00F0FF;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container min-h-screen overflow-x-hidden">
+<div class="fixed inset-0 scan-line z-50 opacity-20 pointer-events-none"></div>
+<!-- Top Navigation Shell -->
+<header class="bg-[#0A0A0F] border-b border-[#00F0FF]/20 shadow-[0_0_8px_0_rgba(0,240,255,0.2)] fixed top-0 w-full z-40">
+<div class="flex justify-between items-center w-full px-6 py-4">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-bold text-[#00F0FF] tracking-tighter font-headline">R.I.D.</span>
+<nav class="hidden md:flex gap-6 items-center">
+<a class="font-['Space_Grotesk'] uppercase tracking-[0.05em] text-xs text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">DASHBOARD</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-[0.05em] text-xs text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">COCKPIT</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-[0.05em] text-xs text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">WORKBENCH</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-[0.05em] text-xs text-[#00F0FF] border-b-2 border-[#00F0FF] pb-1" href="#">AGENTIC HUB</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-[#00F0FF] hover:bg-[#00F0FF]/10 transition-all duration-100 material-symbols-outlined" data-icon="refresh">refresh</button>
+<button class="p-2 text-[#00F0FF] hover:bg-[#00F0FF]/10 transition-all duration-100 material-symbols-outlined" data-icon="settings">settings</button>
+</div>
+</div>
+</header>
+<main class="pt-24 pb-12 px-6 flex flex-col lg:flex-row gap-8">
+<!-- Content Canvas -->
+<div class="flex-1">
+<!-- Header Area -->
+<div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h1 class="font-headline text-3xl font-bold uppercase tracking-widest text-primary-container mb-1">AGENTIC HUB</h1>
+<p class="font-mono text-[10px] text-on-surface-variant tracking-tighter opacity-70">[CHANNEL_01] INSTAGRAM INTELLIGENCE FEED</p>
+</div>
+<div class="flex flex-wrap gap-3 items-center">
+<div class="flex bg-surface-container-low p-1 border border-outline-variant/30">
+<button class="px-3 py-1 text-[10px] font-headline bg-primary-container text-on-primary">ALL</button>
+<button class="px-3 py-1 text-[10px] font-headline text-on-surface-variant hover:text-primary-container">@ai_jason</button>
+<button class="px-3 py-1 text-[10px] font-headline text-on-surface-variant hover:text-primary-container">@indydevdan</button>
+<button class="px-3 py-1 text-[10px] font-headline text-on-surface-variant hover:text-primary-container">@mcaborern</button>
+</div>
+<div class="h-8 w-[1px] bg-outline-variant/30 hidden md:block"></div>
+<select class="bg-surface-container-low border border-outline-variant/30 text-[10px] font-headline uppercase tracking-widest text-on-surface px-4 py-1.5 focus:ring-0 focus:border-primary-container">
+<option>ALL TIME</option>
+<option>THIS WEEK</option>
+<option>THIS MONTH</option>
+</select>
+</div>
+</div>
+<!-- Intelligence Masonry Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Card 01: Intelligence Brief -->
+<div class="relative bg-surface-container-low border-l-4 border-[#6366F1] p-5 corner-bracket flex flex-col gap-5 group hover:bg-surface-container-high transition-all duration-150">
+<div class="space-y-1">
+<h3 class="font-headline font-bold text-xl text-white leading-tight uppercase tracking-tight">AUTONOMOUS MULTI-AGENT SWARMS WITH LANGGRAPH</h3>
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-mono text-primary-container uppercase tracking-wider">@ai_jason • 12H AGO</span>
+<span class="text-[9px] font-mono text-[#6366F1] opacity-50">COORD: 34.0522° N</span>
+</div>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Key Points</p>
+<ul class="space-y-2">
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Scalability of hierarchical agent structures for complex coding tasks.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Memory persistence across shared state in long-running workflows.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Integration of specialized nodes for error correction and QA loops.</span>
+</li>
+</ul>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Transcript Excerpt</p>
+<div class="bg-surface-container-lowest border border-outline-variant/10 p-3 font-mono text-[10px] text-primary-container/70 leading-relaxed italic">
+                            "...system initializing multi-node handshake... individual agents now resolving state conflicts within the graph. Primary controller handoff complete."
+                        </div>
+</div>
+<div class="flex flex-wrap gap-2 pt-2">
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">RAG</span>
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">AGENTS</span>
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">LANGCHAIN</span>
+</div>
+<div class="mt-auto pt-4 flex items-center gap-3">
+<button class="flex-1 border border-primary-container text-primary-container py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:bg-primary-container/10">SUMMARIZE</button>
+<button class="flex-1 bg-[#6366F1] text-white py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:opacity-90">WORKBENCH</button>
+</div>
+</div>
+<!-- Card 02: Intelligence Brief -->
+<div class="relative bg-surface-container-low border-l-4 border-[#6366F1] p-5 corner-bracket flex flex-col gap-5 group hover:bg-surface-container-high transition-all duration-150 ring-1 ring-primary-container/30">
+<div class="space-y-1">
+<h3 class="font-headline font-bold text-xl text-white leading-tight uppercase tracking-tight">LOCAL LLM FINE-TUNING FOR VERTICAL SAAS</h3>
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-mono text-primary-container uppercase tracking-wider">@indydevdan • 1D AGO</span>
+<div class="flex items-center gap-1 text-secondary-fixed">
+<span class="material-symbols-outlined text-xs" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-[9px] font-mono uppercase">ANALYZED</span>
+</div>
+</div>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Key Points</p>
+<ul class="space-y-2">
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Quantized model performance vs GPT-4 on specialized domain data.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Cost reduction strategies for inference using Unsloth.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Privacy advantages of 100% air-gapped proprietary intelligence.</span>
+</li>
+</ul>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Transcript Excerpt</p>
+<div class="bg-surface-container-lowest border border-outline-variant/10 p-3 font-mono text-[10px] text-primary-container/70 leading-relaxed italic">
+                            "...training on 4-bit quantization yields 98% accuracy parity. Deploying local inference cluster to reduce latency below 20ms threshold."
+                        </div>
+</div>
+<div class="flex flex-wrap gap-2 pt-2">
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">FINE-TUNING</span>
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">LLAMA3</span>
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">LOCAL</span>
+</div>
+<div class="mt-auto pt-4 flex items-center gap-3">
+<button class="flex-1 bg-primary-container text-on-primary py-2 text-[10px] font-headline font-bold uppercase tracking-widest">VIEW SUMMARY</button>
+<button class="flex-1 bg-[#6366F1] text-white py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:opacity-90">WORKBENCH</button>
+</div>
+</div>
+<!-- Card 03: Intelligence Brief -->
+<div class="relative bg-surface-container-low border-l-4 border-[#6366F1] p-5 corner-bracket flex flex-col gap-5 group hover:bg-surface-container-high transition-all duration-150">
+<div class="space-y-1">
+<h3 class="font-headline font-bold text-xl text-white leading-tight uppercase tracking-tight">THE FUTURE OF AGENTIC WORKFLOWS IN DEV OPS</h3>
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-mono text-primary-container uppercase tracking-wider">@mcaborern • 2D AGO</span>
+<span class="text-[9px] font-mono text-[#6366F1] opacity-50">COORD: 52.5200° N</span>
+</div>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Key Points</p>
+<ul class="space-y-2">
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Automated incident response using self-healing LLM chains.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Security protocols for autonomous system access.</span>
+</li>
+<li class="flex gap-2 text-xs text-slate-400">
+<span class="text-primary-container font-bold">»</span>
+<span>Infrastructure as Code (IaC) generation via natural language agents.</span>
+</li>
+</ul>
+</div>
+<div class="space-y-2">
+<p class="text-[10px] font-headline font-bold text-on-surface-variant uppercase tracking-[0.2em] border-b border-outline-variant/20 pb-1">Transcript Excerpt</p>
+<div class="bg-surface-container-lowest border border-outline-variant/10 p-3 font-mono text-[10px] text-primary-container/70 leading-relaxed italic">
+                            "...monitoring agent detected latency spike. Initiating auto-scaling group via secondary LLM audit loop. Permission tokens rotating..."
+                        </div>
+</div>
+<div class="flex flex-wrap gap-2 pt-2">
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">DEVOPS</span>
+<span class="text-[9px] font-mono border border-primary-container/40 text-primary-container px-2 py-0.5">AUTO-GPT</span>
+</div>
+<div class="mt-auto pt-4 flex items-center gap-3">
+<button class="flex-1 border border-primary-container text-primary-container py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:bg-primary-container/10">SUMMARIZE</button>
+<button class="flex-1 bg-[#6366F1] text-white py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:opacity-90">WORKBENCH</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Sidebar Navigation Shell -->
+<aside class="w-full lg:w-80 flex flex-col gap-6">
+<div class="bg-[#12121A] border border-[#00F0FF]/20 p-6 flex flex-col gap-6 sticky top-24">
+<div>
+<h2 class="font-headline font-bold text-[#00F0FF] uppercase tracking-widest text-sm mb-1">SIGNAL ANALYSIS</h2>
+<p class="font-mono text-[10px] text-slate-500">[01] SYSTEM: ONLINE</p>
+</div>
+<!-- Stats Grid -->
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-highest/30 p-4 border border-outline-variant/10">
+<p class="text-[9px] font-mono text-on-surface-variant mb-1 uppercase">TOTAL INGESTED</p>
+<p class="text-2xl font-headline font-bold text-primary-container">1,482</p>
+</div>
+<div class="bg-surface-container-highest/30 p-4 border border-outline-variant/10">
+<p class="text-[9px] font-mono text-on-surface-variant mb-1 uppercase">ACTIVE NODES</p>
+<p class="text-2xl font-headline font-bold text-secondary-fixed">04</p>
+</div>
+</div>
+<!-- Mini Bar Chart: Posts by Account -->
+<div class="space-y-3">
+<p class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">POSTS BY SOURCE</p>
+<div class="space-y-2">
+<div class="space-y-1">
+<div class="flex justify-between text-[9px] font-mono text-on-surface-variant">
+<span>@ai_jason</span>
+<span>428</span>
+</div>
+<div class="h-1 bg-surface-container-highest w-full">
+<div class="h-full bg-primary-container shadow-[0_0_4px_#00F0FF]" style="width: 85%"></div>
+</div>
+</div>
+<div class="space-y-1">
+<div class="flex justify-between text-[9px] font-mono text-on-surface-variant">
+<span>@indydevdan</span>
+<span>312</span>
+</div>
+<div class="h-1 bg-surface-container-highest w-full">
+<div class="h-full bg-primary-container shadow-[0_0_4px_#00F0FF]" style="width: 65%"></div>
+</div>
+</div>
+<div class="space-y-1">
+<div class="flex justify-between text-[9px] font-mono text-on-surface-variant">
+<span>@mcaborern</span>
+<span>289</span>
+</div>
+<div class="h-1 bg-surface-container-highest w-full">
+<div class="h-full bg-primary-container shadow-[0_0_4px_#00F0FF]" style="width: 60%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Horizontal Bar Chart: Keywords -->
+<div class="space-y-3">
+<p class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">HOT KEYWORDS (7D)</p>
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<span class="w-12 text-[9px] font-mono text-on-surface-variant">AGENTS</span>
+<div class="flex-1 h-3 bg-surface-container-highest relative">
+<div class="absolute inset-y-0 left-0 bg-primary-container/60 border-r border-primary-container" style="width: 90%"></div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="w-12 text-[9px] font-mono text-on-surface-variant">LLAMA 3</span>
+<div class="flex-1 h-3 bg-surface-container-highest relative">
+<div class="absolute inset-y-0 left-0 bg-primary-container/60 border-r border-primary-container" style="width: 75%"></div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="w-12 text-[9px] font-mono text-on-surface-variant">LOCAL</span>
+<div class="flex-1 h-3 bg-surface-container-highest relative">
+<div class="absolute inset-y-0 left-0 bg-primary-container/60 border-r border-primary-container" style="width: 55%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Trending Topics List -->
+<div class="space-y-3">
+<p class="text-[10px] font-headline text-on-surface-variant uppercase tracking-widest">TRENDING TOPICS</p>
+<div class="space-y-1">
+<div class="flex items-center justify-between p-2 hover:bg-white/5 transition-colors border-b border-outline-variant/10">
+<span class="text-xs font-medium">Multimodal RAG</span>
+<span class="bg-primary-container/10 text-primary-container text-[9px] font-mono px-1.5 py-0.5 border border-primary-container/20">842 Freq</span>
+</div>
+<div class="flex items-center justify-between p-2 hover:bg-white/5 transition-colors border-b border-outline-variant/10">
+<span class="text-xs font-medium">Groq Inference</span>
+<span class="bg-primary-container/10 text-primary-container text-[9px] font-mono px-1.5 py-0.5 border border-primary-container/20">611 Freq</span>
+</div>
+<div class="flex items-center justify-between p-2 hover:bg-white/5 transition-colors border-b border-outline-variant/10">
+<span class="text-xs font-medium">Function Calling</span>
+<span class="bg-primary-container/10 text-primary-container text-[9px] font-mono px-1.5 py-0.5 border border-primary-container/20">592 Freq</span>
+</div>
+<div class="flex items-center justify-between p-2 hover:bg-white/5 transition-colors border-b border-outline-variant/10">
+<span class="text-xs font-medium">Vector DBs</span>
+<span class="bg-primary-container/10 text-primary-container text-[9px] font-mono px-1.5 py-0.5 border border-primary-container/20">433 Freq</span>
+</div>
+</div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant/20">
+<div class="flex items-center gap-2 text-[10px] font-mono text-on-surface-variant mb-2">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed animate-pulse"></span>
+                        SYNCHRONIZING WITH META CLOUD...
+                    </div>
+<div class="h-1 bg-surface-container-highest w-full rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed w-[72%]"></div>
+</div>
+</div>
+</div>
+</aside>
+</main>
+<!-- Bottom Mobile Nav -->
+<nav class="md:hidden fixed bottom-0 w-full bg-[#12121A] border-t border-[#00F0FF]/20 flex justify-around p-3 z-40">
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined text-xl" data-icon="analytics">analytics</span>
+<span class="text-[8px] font-headline uppercase">ANALYSIS</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined text-xl" data-icon="hub">hub</span>
+<span class="text-[8px] font-headline uppercase">NETWORK</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-[#00F0FF]">
+<span class="material-symbols-outlined text-xl" data-icon="Cell_Tower">cell_tower</span>
+<span class="text-[8px] font-headline uppercase">HUB</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined text-xl" data-icon="inventory_2">inventory_2</span>
+<span class="text-[8px] font-headline uppercase">ARCHIVE</span>
+</button>
+</nav>
+<!-- Decorative Corner Brackets for Page -->
+<div class="fixed top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-primary-container/20 pointer-events-none z-0"></div>
+<div class="fixed bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-primary-container/20 pointer-events-none z-0"></div>
+</body></html>

@@ -1,11 +1,18 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { GlowButton } from "@/components/ui/glow-button";
+import { apiMutate } from "@/lib/api";
 import { useBlogQueue } from "./hooks";
 import { FeedSkeleton } from "./Skeleton";
 import type { BlogItem } from "./types";
 
 function BlogCard({ item, index }: { item: BlogItem; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState(false);
+
   const statusColor =
     item.status === "draft"
       ? "text-accent-amber"
@@ -13,8 +20,34 @@ function BlogCard({ item, index }: { item: BlogItem; index: number }) {
         ? "text-accent-green"
         : "text-outline";
 
+  const handleGenerateDraft = useCallback(async () => {
+    if (drafting) return;
+    if (draft) {
+      setExpanded(true);
+      return;
+    }
+    setDrafting(true);
+    try {
+      const result = await apiMutate<{ draft: string; draft_path: string }>(
+        "/blog-queue/draft",
+        { body: { item: { name: item.title, hook: item.notes, tags: item.tags?.join(", ") ?? "" } } }
+      );
+      setDraft(result.draft);
+      setExpanded(true);
+    } catch (err) {
+      console.error("Draft generation failed:", err);
+    } finally {
+      setDrafting(false);
+    }
+  }, [item, draft, drafting]);
+
   return (
-    <div className="bg-bg-surface p-5 border-l-4 border-accent-amber group hover:bg-surface-high/50 transition-colors">
+    <div
+      className={`bg-bg-surface p-5 border-l-4 border-accent-amber group transition-all duration-150 cursor-pointer ${
+        expanded ? "ring-1 ring-accent-amber/30" : "hover:bg-surface-high/50"
+      }`}
+      onClick={() => setExpanded((prev) => !prev)}
+    >
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] text-accent-cyan/50">
@@ -51,12 +84,50 @@ function BlogCard({ item, index }: { item: BlogItem; index: number }) {
           {item.notes}
         </p>
       )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4" onClick={(e) => e.stopPropagation()}>
+          {item.source && (
+            <div>
+              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                Source
+              </p>
+              <p className="font-mono text-[11px] text-accent-cyan/70">{item.source}</p>
+            </div>
+          )}
+
+          {/* Draft content */}
+          {draft && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-headline font-bold text-accent-green uppercase tracking-[0.2em] border-b border-accent-green/20 pb-1">
+                Generated Draft
+              </p>
+              <div className="bg-bg-base border border-accent-green/20 p-3 text-xs text-text-secondary leading-relaxed max-h-80 overflow-y-auto whitespace-pre-wrap">
+                {draft}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3">
+            <GlowButton
+              variant="primary"
+              className="flex-1 py-2 text-[10px]"
+              onClick={handleGenerateDraft}
+              disabled={drafting}
+            >
+              {drafting ? "GENERATING..." : draft ? "VIEW DRAFT" : "GENERATE DRAFT"}
+            </GlowButton>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * BlogQueueTab — Blog ideas queue with status indicators.
+ * BlogQueueTab — Blog ideas queue with expandable cards and draft generation.
  */
 export function BlogQueueTab() {
   const { data, isLoading } = useBlogQueue();

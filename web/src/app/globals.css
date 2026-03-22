@@ -10,6 +10,7 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
   --font-heading: var(--font-space-grotesk);
+  --font-headline: var(--font-space-grotesk);
 
   /* Shadcn color bindings */
   --color-background: var(--background);
@@ -337,8 +338,17 @@
   animation: glitch-clip-2 0.5s infinite linear alternate-reverse;
 }
 
-/* Respect reduced motion */
+/* Respect reduced motion — global rule for ALL CSS animations/transitions */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .glitch-layer {
     display: none;
   }

@@ -1,13 +1,49 @@
 "use client";
 
-import { useMethods } from "./hooks";
+import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { GlowButton } from "@/components/ui/glow-button";
+import { apiMutate } from "@/lib/api";
+import { useMethods } from "./hooks";
 import { FeedSkeleton } from "./Skeleton";
 import type { MethodItem } from "./types";
 
 function MethodCard({ item, index }: { item: MethodItem; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+
+  const handleWorkbench = useCallback(async () => {
+    if (wbStatus !== "idle") return;
+    setWbStatus("sending");
+    try {
+      await apiMutate("/workbench", {
+        body: {
+          item: {
+            source_type: "method",
+            name: item.name,
+            category: item.category,
+            status: item.status,
+            source: item.source,
+            notes: item.notes,
+            tags: item.tags?.join(", ") ?? "",
+          },
+        },
+      });
+      setWbStatus("sent");
+      setTimeout(() => setWbStatus("idle"), 2000);
+    } catch (err) {
+      console.error("Workbench send failed:", err);
+      setWbStatus("idle");
+    }
+  }, [item, wbStatus]);
+
   return (
-    <div className="bg-bg-surface p-5 border-l-4 border-purple group hover:bg-surface-high/50 transition-colors">
+    <div
+      className={`bg-bg-surface p-5 border-l-4 border-purple group transition-all duration-150 cursor-pointer ${
+        expanded ? "ring-1 ring-purple/30" : "hover:bg-surface-high/50"
+      }`}
+      onClick={() => setExpanded((prev) => !prev)}
+    >
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] text-accent-cyan/50">
@@ -50,12 +86,44 @@ function MethodCard({ item, index }: { item: MethodItem; index: number }) {
           {item.notes}
         </p>
       )}
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4" onClick={(e) => e.stopPropagation()}>
+          {item.paper_url && (
+            <div>
+              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                Paper URL
+              </p>
+              <a
+                href={item.paper_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[11px] text-accent-cyan hover:underline"
+              >
+                {item.paper_url}
+              </a>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <GlowButton
+              variant="secondary"
+              className="flex-1 py-2 text-[10px]"
+              onClick={handleWorkbench}
+              disabled={wbStatus !== "idle"}
+            >
+              {wbStatus === "sent" ? "SENT TO WORKBENCH" : wbStatus === "sending" ? "SENDING..." : "SEND TO WORKBENCH"}
+            </GlowButton>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * AISignalTab — Methods/techniques intelligence feed from JournalClub.
+ * AISignalTab — Methods/techniques intelligence feed with expandable cards and workbench integration.
  */
 export function AISignalTab() {
   const { data, isLoading } = useMethods();

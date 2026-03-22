@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>R.I.D. | Project Cockpit</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-secondary": "#003822",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container": "#1f1f25",
+                        "error-container": "#93000a",
+                        "surface-tint": "#00dbe9",
+                        "inverse-primary": "#006970",
+                        "on-tertiary-container": "#7d5800",
+                        "on-secondary-fixed-variant": "#005234",
+                        "secondary": "#f4fff5",
+                        "primary": "#dbfcff",
+                        "primary-container": "#00f0ff",
+                        "background": "#0A0A0F",
+                        "surface-container-low": "#12121A",
+                        "on-tertiary-fixed": "#271900",
+                        "surface-dim": "#0A0A0F",
+                        "outline": "#849495",
+                        "surface-variant": "#35343a",
+                        "tertiary-fixed-dim": "#ffba20",
+                        "surface-container-lowest": "#0e0e13",
+                        "on-background": "#e4e1e9",
+                        "on-error-container": "#ffdad6",
+                        "outline-variant": "#3b494b",
+                        "surface": "#0A0A0F",
+                        "on-secondary-container": "#007149",
+                        "surface-container-highest": "#35343a",
+                        "on-tertiary-fixed-variant": "#5e4200",
+                        "on-primary-fixed-variant": "#004f54",
+                        "secondary-fixed": "#4dffb2",
+                        "secondary-container": "#00ffab",
+                        "on-surface": "#e4e1e9",
+                        "tertiary-fixed": "#ffdea8",
+                        "surface-container-high": "#2a292f",
+                        "inverse-on-surface": "#303036",
+                        "on-primary": "#00363a",
+                        "on-primary-container": "#006970",
+                        "on-primary-fixed": "#002022",
+                        "tertiary-container": "#ffd386",
+                        "secondary-fixed-dim": "#00e297",
+                        "primary-fixed": "#7df4ff",
+                        "on-error": "#690005",
+                        "surface-bright": "#39383e",
+                        "primary-fixed-dim": "#00dbe9",
+                        "inverse-surface": "#e4e1e9",
+                        "on-tertiary": "#412d00",
+                        "on-secondary-fixed": "#002112",
+                        "tertiary": "#fff4e8",
+                        "error": "#ffb4ab"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: { "DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .scanline-overlay {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .corner-bracket {
+            position: relative;
+        }
+        .corner-bracket::before, .corner-bracket::after {
+            content: '';
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-color: #00F0FF;
+            pointer-events: none;
+        }
+        .bracket-tl::before { top: 0; left: 0; border-top: 1px solid; border-left: 1px solid; }
+        .bracket-tr::after { top: 0; right: 0; border-top: 1px solid; border-right: 1px solid; }
+        .bracket-bl::before { bottom: 0; left: 0; border-bottom: 1px solid; border-left: 1px solid; }
+        .bracket-br::after { bottom: 0; right: 0; border-bottom: 1px solid; border-right: 1px solid; }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary antialiased min-h-screen flex flex-col overflow-hidden">
+<div class="fixed inset-0 scanline-overlay z-[100]"></div>
+<!-- TopNavBar -->
+<header class="bg-[#0A0A0F] dark:bg-[#0A0A0F] font-['Space_Grotesk'] uppercase tracking-[0.05em] antialiased docked full-width top-0 z-50 border-b border-[#3B494B]/15 shadow-[0_0_15px_rgba(0,240,255,0.1)] flex justify-between items-center w-full px-6 py-4">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black text-[#00F0FF] tracking-tighter">R.I.D.</span>
+<nav class="hidden md:flex gap-6 text-xs font-medium">
+<a class="text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">DASHBOARD</a>
+<a class="text-[#00F0FF] border-b-2 border-[#00F0FF] pb-1" href="#">COCKPIT</a>
+<a class="text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">WORKBENCH</a>
+<a class="text-slate-500 hover:text-[#00F0FF]/80 transition-colors" href="#">AGENTIC HUB</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative flex items-center bg-surface-container-low px-3 py-1.5 border border-outline-variant/30">
+<span class="material-symbols-outlined text-sm text-outline mr-2">search</span>
+<input class="bg-transparent border-none text-xs focus:ring-0 w-48 text-primary placeholder:text-outline/50 p-0" placeholder="QUERY_SYSTEM..." type="text"/>
+</div>
+<button class="text-outline hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-outline hover:text-primary-container transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 bg-surface-container-high border border-primary-container/30 overflow-hidden">
+<img alt="User Operator Profile" class="w-full h-full object-cover opacity-80" data-alt="Cyberpunk user profile avatar illustration" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlE-cTCM5rO3YnjoWL49zYdlkh8lVxrk892EqTdEmoCcmq_sJlTpto-k7MegWb57stBnSWhoMv1w2xLJolrRiOYzcA6ivpkHm5yU6vP64XsIW7HBLtGMoga3Jq65-zrOQQw9NzfxVXhEFvIbHLG-iv2hC6ejmVCGtqDpdlfC3bOsHJ0d2lN3H73UVO3OXf0hUxLdQy2twazuIAZzLNK2uNiRN-mdLC0HGGb-jTVXT4rO_qHxHM9KDK0zp0sh9yF8_2DMhZeVPNywk"/>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="bg-[#0A0A0F] dark:bg-[#12121A] font-['JetBrains_Mono'] text-xs uppercase tracking-wider docked left-0 h-screen w-72 border-r border-[#3B494B]/15 flex flex-col h-full py-4 gap-2 z-40">
+<div class="px-4 mb-4">
+<div class="flex items-center gap-3 mb-1">
+<div class="w-2 h-2 bg-primary-container animate-pulse"></div>
+<span class="text-primary-fixed font-bold">PROJECTS</span>
+</div>
+<div class="text-[10px] text-outline/60">[01] SELECTOR_ACTIVE</div>
+</div>
+<div class="flex-1 overflow-y-auto space-y-1">
+<!-- Active Item -->
+<div class="border border-[#00F0FF] shadow-[0_0_8px_rgba(0,240,255,0.3)] bg-[#1B1B20] text-[#00F0FF] mx-2 my-1 p-3 flex items-center justify-between group cursor-pointer animate-pulse duration-75">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-lg">folder_open</span>
+<span>Research Dashboard</span>
+</div>
+<span class="text-[9px] bg-primary-container/20 px-1 border border-primary-container/40">ACTIVE</span>
+</div>
+<!-- Inactive Items -->
+<div class="text-slate-400 p-3 mx-2 my-1 flex items-center gap-3 opacity-70 hover:bg-[#2A292F] hover:text-[#00F0FF] transition-all duration-75 cursor-pointer">
+<span class="material-symbols-outlined text-lg">psychology</span>
+<span>Neural Mapping</span>
+</div>
+<div class="text-slate-400 p-3 mx-2 my-1 flex items-center gap-3 opacity-70 hover:bg-[#2A292F] hover:text-[#00F0FF] transition-all duration-75 cursor-pointer">
+<span class="material-symbols-outlined text-lg">memory</span>
+<span>Quantum Compute</span>
+</div>
+<div class="text-slate-400 p-3 mx-2 my-1 flex items-center gap-3 opacity-70 hover:bg-[#2A292F] hover:text-[#00F0FF] transition-all duration-75 cursor-pointer">
+<span class="material-symbols-outlined text-lg">biotech</span>
+<span>Bio-Signal Alpha</span>
+</div>
+<div class="text-slate-400 p-3 mx-2 my-1 flex items-center gap-3 opacity-70 hover:bg-[#2A292F] hover:text-[#00F0FF] transition-all duration-75 cursor-pointer">
+<span class="material-symbols-outlined text-lg">local_shipping</span>
+<span>Tactical Logistics</span>
+</div>
+<div class="text-slate-400 p-3 mx-2 my-1 flex items-center gap-3 opacity-70 hover:bg-[#2A292F] hover:text-[#00F0FF] transition-all duration-75 cursor-pointer">
+<span class="material-symbols-outlined text-lg">smart_toy</span>
+<span>Synth Intelligence</span>
+</div>
+</div>
+<div class="px-2 mt-auto pt-4 border-t border-outline-variant/10">
+<button class="w-full bg-primary-container text-on-primary py-3 font-bold text-center tracking-[0.2em] hover:brightness-110 transition-all mb-4">
+                    NEW PROJECT
+                </button>
+<div class="space-y-1">
+<div class="text-slate-400 p-3 flex items-center gap-3 opacity-70 hover:text-primary-container transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-lg">dns</span>
+<span>System Status</span>
+</div>
+<div class="text-slate-400 p-3 flex items-center gap-3 opacity-70 hover:text-primary-container transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-lg">terminal</span>
+<span>Terminal</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto bg-surface-dim p-8 relative">
+<!-- Project Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-6">
+<div class="space-y-2">
+<div class="flex items-center gap-2 text-[10px] font-mono text-outline">
+<span>PRJ_REF: 884-TX</span>
+<span class="w-1 h-1 rounded-full bg-outline/40"></span>
+<span>LOC: 40.7128° N, 74.0060° W</span>
+</div>
+<h1 class="text-5xl font-black font-headline tracking-tighter text-on-background uppercase">
+                        Research <span class="text-primary-container">Dashboard</span>
+</h1>
+<div class="flex flex-wrap items-center gap-3 pt-2">
+<span class="bg-secondary-fixed/10 text-secondary-fixed border border-secondary-fixed/30 px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase">STATUS: ACTIVE</span>
+<span class="bg-primary-container/10 text-primary-container border border-primary-container/30 px-2 py-0.5 text-[10px] font-bold tracking-widest uppercase">DOMAIN: ENGINEERING</span>
+<div class="flex gap-2">
+<span class="text-[10px] px-2 py-0.5 border border-outline-variant text-outline">Python</span>
+<span class="text-[10px] px-2 py-0.5 border border-outline-variant text-outline">Streamlit</span>
+<span class="text-[10px] px-2 py-0.5 border border-outline-variant text-outline">Claude API</span>
+</div>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="px-6 py-2 border border-primary-container text-primary-container font-bold text-xs tracking-widest hover:bg-primary-container/10 transition-all">ANALYZE</button>
+<button class="px-6 py-2 bg-tertiary-fixed-dim text-on-tertiary font-bold text-xs tracking-widest hover:brightness-110 transition-all">GO DEEP</button>
+</div>
+</div>
+<!-- Bento Layout Grid -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Graph Visualization Module -->
+<div class="col-span-12 lg:col-span-7 bg-surface-container-low border border-outline-variant/10 corner-bracket bracket-tl bracket-br p-6 min-h-[400px] flex flex-col">
+<div class="flex justify-between items-start mb-6">
+<div>
+<div class="text-[10px] font-mono text-primary-container mb-1 tracking-widest">NETWORK_TOPOLOGY_01</div>
+<h3 class="font-headline font-bold text-lg uppercase tracking-wider">Neural Map Viz</h3>
+</div>
+<div class="text-right">
+<div class="text-[10px] font-mono text-outline uppercase tracking-widest">Centrality Rank</div>
+<div class="text-2xl font-black font-mono text-on-background">12<span class="text-outline text-sm font-normal">/156</span></div>
+</div>
+</div>
+<!-- SVG Network Graph Simulation -->
+<div class="flex-1 relative flex items-center justify-center bg-black/40 border border-outline-variant/5">
+<svg class="w-full h-full max-h-[300px]" viewbox="0 0 400 200">
+<!-- Connection Edges -->
+<line stroke="#00F0FF" stroke-dasharray="2 2" stroke-width="0.5" x1="100" x2="200" y1="100" y2="50"></line>
+<line stroke="#00F0FF" stroke-width="0.5" x1="100" x2="200" y1="100" y2="150"></line>
+<line stroke="#00F0FF" stroke-width="0.5" x1="200" x2="300" y1="50" y2="100"></line>
+<line stroke="#00F0FF" stroke-dasharray="4 2" stroke-width="0.5" x1="200" x2="300" y1="150" y2="100"></line>
+<line stroke="#00F0FF" stroke-width="0.5" x1="200" x2="200" y1="50" y2="150"></line>
+<!-- Nodes -->
+<circle class="animate-pulse" cx="100" cy="100" fill="#00F0FF" r="4"></circle>
+<circle cx="200" cy="50" fill="#00F0FF" r="6"></circle>
+<circle cx="200" cy="150" fill="#00F0FF" r="3"></circle>
+<circle cx="300" cy="100" fill="#00F0FF" fill-opacity="0.4" r="8"></circle>
+<circle cx="300" cy="100" fill="#00F0FF" r="2"></circle>
+</svg>
+<div class="absolute bottom-4 right-4 font-mono text-[9px] text-outline/50">RENDER_LATENCY: 0.04ms</div>
+</div>
+</div>
+<!-- Stats Module -->
+<div class="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-6 border border-outline-variant/10 corner-bracket bracket-tr">
+<div class="text-[10px] text-outline mb-2 tracking-widest">COGNITIVE_LOAD</div>
+<div class="text-3xl font-black font-mono text-primary-container">64.2%</div>
+<div class="mt-4 w-full bg-outline-variant/20 h-1">
+<div class="bg-primary-container h-full w-[64%]"></div>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 border border-outline-variant/10 corner-bracket bracket-bl">
+<div class="text-[10px] text-outline mb-2 tracking-widest">AGENT_SYNC</div>
+<div class="text-3xl font-black font-mono text-secondary-fixed">OPTIMAL</div>
+<div class="mt-4 flex gap-1">
+<div class="h-1 w-2 bg-secondary-fixed"></div>
+<div class="h-1 w-2 bg-secondary-fixed"></div>
+<div class="h-1 w-2 bg-secondary-fixed"></div>
+<div class="h-1 w-2 bg-secondary-fixed/30"></div>
+</div>
+</div>
+<div class="col-span-2 bg-[#8B5CF6]/5 border border-[#8B5CF6]/20 p-6 flex items-center justify-between">
+<div>
+<div class="text-[10px] text-[#8B5CF6] mb-1 tracking-widest">PURPLE_PROTOCOL_ACTIVE</div>
+<div class="text-lg font-headline font-bold uppercase">Recursive Synthesis</div>
+</div>
+<span class="material-symbols-outlined text-4xl text-[#8B5CF6]/40">hub</span>
+</div>
+</div>
+<!-- Feeds Section -->
+<div class="col-span-12 grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+<!-- Linked Methods (Purple) -->
+<section class="space-y-4">
+<div class="flex items-center justify-between border-b border-[#8B5CF6]/30 pb-2">
+<h2 class="font-headline font-black text-[#8B5CF6] tracking-widest text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">settings_input_component</span>
+                                LINKED METHODS
+                            </h2>
+<span class="text-[10px] font-mono text-outline">[TOTAL: 04]</span>
+</div>
+<div class="space-y-3">
+<!-- Card 1 -->
+<div class="bg-surface-container-low p-4 border-l-2 border-[#8B5CF6] hover:bg-surface-container-high transition-colors group">
+<div class="flex justify-between mb-2">
+<h4 class="font-bold text-xs text-on-background tracking-wider">SEMANTIC_CLUSTERING_V4</h4>
+<span class="text-[9px] font-mono text-outline">SOURCE: SYSTEM_CORE</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex-1 bg-outline-variant/20 h-1.5 overflow-hidden">
+<div class="bg-[#8B5CF6] h-full w-[88%]"></div>
+</div>
+<span class="text-[10px] font-mono text-[#8B5CF6]">88% MATCH</span>
+</div>
+<div class="mt-4 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="text-[9px] border border-[#8B5CF6] px-2 py-1 text-[#8B5CF6] hover:bg-[#8B5CF6] hover:text-white">RE-CALIBRATE</button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-low p-4 border-l-2 border-[#8B5CF6] hover:bg-surface-container-high transition-colors group">
+<div class="flex justify-between mb-2">
+<h4 class="font-bold text-xs text-on-background tracking-wider">ENTROPY_MINIMIZER</h4>
+<span class="text-[9px] font-mono text-outline">SOURCE: EXT_AGENT_01</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex-1 bg-outline-variant/20 h-1.5 overflow-hidden">
+<div class="bg-[#8B5CF6] h-full w-[42%]"></div>
+</div>
+<span class="text-[10px] font-mono text-[#8B5CF6]">42% MATCH</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Linked Tools (Green) -->
+<section class="space-y-4">
+<div class="flex items-center justify-between border-b border-[#39FF14]/30 pb-2">
+<h2 class="font-headline font-black text-[#39FF14] tracking-widest text-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">construction</span>
+                                LINKED TOOLS
+                            </h2>
+<span class="text-[10px] font-mono text-outline">[TOTAL: 03]</span>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<!-- Tool Card 1 -->
+<div class="bg-surface-container-low p-4 border border-outline-variant/10 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-8 h-8 flex items-center justify-center">
+<div class="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse"></div>
+</div>
+<div class="text-[9px] text-[#39FF14] font-mono mb-1">STABLE_RELEASE</div>
+<h4 class="font-bold text-sm text-on-background mb-4">CLAUDE_ENGINE_PIPE</h4>
+<div class="flex items-center justify-between">
+<span class="text-[10px] px-2 py-0.5 bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20">API_CONNECTOR</span>
+<button class="text-[10px] text-outline hover:text-primary transition-colors flex items-center gap-1">
+                                        WORKBENCH <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+</button>
+</div>
+</div>
+<!-- Tool Card 2 -->
+<div class="bg-surface-container-low p-4 border border-outline-variant/10 relative overflow-hidden">
+<div class="absolute top-0 right-0 w-8 h-8 flex items-center justify-center">
+<div class="w-1.5 h-1.5 rounded-full bg-outline/30"></div>
+</div>
+<div class="text-[9px] text-outline font-mono mb-1">DORMANT_STATE</div>
+<h4 class="font-bold text-sm text-on-background mb-4">VECTOR_DB_LOCAL</h4>
+<div class="flex items-center justify-between">
+<span class="text-[10px] px-2 py-0.5 bg-outline-variant/20 text-outline border border-outline-variant/30">STORAGE</span>
+<button class="text-[10px] text-outline hover:text-primary transition-colors flex items-center gap-1">
+                                        WORKBENCH <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+</div>
+<!-- Status Bar (Bottom) -->
+<footer class="bg-surface-container-lowest border-t border-outline-variant/10 px-6 py-2 flex items-center justify-between z-50">
+<div class="flex items-center gap-6 text-[9px] font-mono tracking-widest text-outline">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 bg-secondary-fixed rounded-full"></span>
+                SYSTEM: ONLINE
+            </div>
+<div>LATENCY: 12ms</div>
+<div>UPTIME: 452:12:08</div>
+</div>
+<div class="text-[9px] font-mono text-primary-container/60">
+            © 2024 R.I.D. TACTICAL OS // PROJECT_COCKPIT_V1.0.4
+        </div>
+</footer>
+</body></html>

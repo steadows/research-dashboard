@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
+import { m, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 // ── Component ──
@@ -34,7 +34,7 @@ export function ScrollIndicator({
   };
 
   return (
-    <motion.button
+    <m.button
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 2.5, duration: 0.6, ease: "easeOut" }}
@@ -103,6 +103,6 @@ export function ScrollIndicator({
           </svg>
         </div>
       </div>
-    </motion.button>
+    </m.button>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, useMotionValue, useSpring } from "framer-motion";
+import { m, useMotionValue, useSpring } from "framer-motion";
 
 /**
  * Custom cursor effect — desktop only.
@@ -92,7 +92,7 @@ export function CursorEffect() {
   return (
     <>
       {/* Glow trail ring — follows with spring delay */}
-      <motion.div
+      <m.div
         className="pointer-events-none fixed left-0 top-0 z-[9999] h-10 w-10 rounded-full border border-accent-cyan/30"
         style={{
           x: ringX,
@@ -108,7 +108,7 @@ export function CursorEffect() {
       />
 
       {/* Center dot — follows cursor exactly */}
-      <motion.div
+      <m.div
         className="pointer-events-none fixed left-0 top-0 z-[9999] h-2.5 w-2.5 rounded-full bg-accent-cyan"
         style={{
           x: cursorX,

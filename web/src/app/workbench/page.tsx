@@ -94,7 +94,7 @@ export default function WorkbenchPage() {
                 count={columns[status].length}
               >
                 {columns[status].map((entry) => (
-                  <div key={entry.key} className="flex flex-col gap-3">
+                  <div key={entry.key} className="flex flex-col gap-3" role="listitem">
                     <WorkbenchCard
                       entry={entry}
                       onStartResearch={handleStartResearch}

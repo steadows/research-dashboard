@@ -13,8 +13,8 @@ interface HUDCardProps {
 }
 
 /**
- * HUDCard — Metric card with corner brackets and glow border.
- * 0px border-radius, glow (not shadow), corner bracket accents.
+ * HUDCard — Metric card with glow border.
+ * 0px border-radius, glow (not shadow), no corner brackets.
  */
 export function HUDCard({
   children,
@@ -30,12 +30,6 @@ export function HUDCard({
         className
       )}
     >
-      {/* Corner brackets */}
-      <div className="pointer-events-none absolute -left-px -top-px h-3 w-3 border-l-2 border-t-2 border-cyan-fixed" aria-hidden="true" />
-      <div className="pointer-events-none absolute -right-px -top-px h-3 w-3 border-r-2 border-t-2 border-cyan-fixed" aria-hidden="true" />
-      <div className="pointer-events-none absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-cyan-fixed" aria-hidden="true" />
-      <div className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-cyan-fixed" aria-hidden="true" />
-
       {(index || title || meta) && (
         <div className="mb-4 flex items-start justify-between">
           <span className="font-headline text-xs uppercase tracking-[0.2em] text-accent-cyan/70">

@@ -172,10 +172,16 @@ function CompletedContent({
           VIEW REPORT
         </GlowButton>
         <div className="grid grid-cols-2 gap-2">
-          <button className="py-1.5 bg-accent-amber text-bg-base font-heading text-[10px] font-bold uppercase">
+          <button
+            className="py-1.5 bg-accent-amber text-bg-base font-heading text-[10px] font-bold uppercase"
+            aria-label={`Open ${entry.name} in sandbox`}
+          >
             SANDBOX
           </button>
-          <button className="py-1.5 border border-outline-variant text-text-secondary/60 font-heading text-[10px] font-bold uppercase hover:text-white transition-colors">
+          <button
+            className="py-1.5 border border-outline-variant text-text-secondary/60 font-heading text-[10px] font-bold uppercase hover:text-white transition-colors"
+            aria-label={`Open ${entry.name} in Obsidian`}
+          >
             OBSIDIAN
           </button>
         </div>

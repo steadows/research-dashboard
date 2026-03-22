@@ -47,7 +47,7 @@ export function AnalysisPanel({ projectName }: AnalysisPanelProps) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-live="polite">
       {/* Action buttons */}
       <div className="flex gap-3">
         <button

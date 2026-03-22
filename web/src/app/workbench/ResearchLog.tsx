@@ -141,6 +141,9 @@ function ResearchLogInner({
       <div
         ref={containerRef}
         className="bg-bg-base border border-accent-cyan/20 p-4 max-h-64 overflow-y-auto font-mono text-[11px] text-accent-cyan/80 leading-relaxed"
+        role="log"
+        aria-label="Research log output"
+        aria-live="polite"
       >
         {lines.length === 0 && !isDone && (
           <span className="text-text-secondary/50 italic">

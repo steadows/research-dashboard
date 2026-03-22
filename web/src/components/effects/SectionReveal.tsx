@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useRef } from "react";
 import {
-  motion,
+  m,
   useInView,
   useReducedMotion,
   type Variants,
@@ -155,7 +155,7 @@ export function SectionReveal({
     : revealVariants[animation];
 
   return (
-    <motion.div
+    <m.div
       ref={ref}
       variants={activeVariants}
       initial="hidden"
@@ -168,7 +168,7 @@ export function SectionReveal({
       className={cn(className)}
     >
       {children}
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -224,7 +224,7 @@ export function SectionRevealGroup({
     <RevealGroupCtx.Provider
       value={{ animation, duration, shouldReduceMotion }}
     >
-      <motion.div
+      <m.div
         ref={ref}
         variants={containerVariants}
         initial="hidden"
@@ -232,7 +232,7 @@ export function SectionRevealGroup({
         className={cn(className)}
       >
         {children}
-      </motion.div>
+      </m.div>
     </RevealGroupCtx.Provider>
   );
 }
@@ -279,8 +279,8 @@ export function SectionRevealItem({
   };
 
   return (
-    <motion.div variants={itemVariants} className={cn(className)}>
+    <m.div variants={itemVariants} className={cn(className)}>
       {children}
-    </motion.div>
+    </m.div>
   );
 }

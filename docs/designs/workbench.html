@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>R.I.D. WORKBENCH | TACTICAL HUD</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;family=Inter:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#35343a",
+                        "on-tertiary-container": "#7d5800",
+                        "on-secondary": "#003822",
+                        "on-tertiary-fixed-variant": "#5e4200",
+                        "on-error": "#690005",
+                        "surface-bright": "#39383e",
+                        "primary-container": "#00f0ff",
+                        "primary-fixed-dim": "#00dbe9",
+                        "primary-fixed": "#7df4ff",
+                        "inverse-on-surface": "#303036",
+                        "on-secondary-fixed-variant": "#005234",
+                        "background": "#0A0A0F",
+                        "tertiary-fixed": "#ffdea8",
+                        "secondary-fixed-dim": "#00e297",
+                        "on-error-container": "#ffdad6",
+                        "on-background": "#e4e1e9",
+                        "secondary-container": "#00ffab",
+                        "tertiary-fixed-dim": "#ffba20",
+                        "on-surface": "#e4e1e9",
+                        "surface-container-highest": "#35343a",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed": "#002022",
+                        "surface-container": "#1f1f25",
+                        "outline": "#849495",
+                        "error-container": "#93000a",
+                        "surface-container-lowest": "#0e0e13",
+                        "on-surface-variant": "#b9cacb",
+                        "inverse-primary": "#006970",
+                        "on-tertiary-fixed": "#271900",
+                        "on-tertiary": "#412d00",
+                        "on-primary": "#00363a",
+                        "surface-container-high": "#2a292f",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-secondary-fixed": "#002112",
+                        "tertiary": "#fff4e8",
+                        "error": "#ffb4ab",
+                        "on-secondary-container": "#007149",
+                        "surface-container-low": "#12121A",
+                        "tertiary-container": "#ffd386",
+                        "surface": "#0A0A0F",
+                        "surface-tint": "#00dbe9",
+                        "outline-variant": "#3b494b",
+                        "surface-dim": "#0A0A0F",
+                        "secondary": "#f4fff5",
+                        "on-primary-container": "#006970",
+                        "inverse-surface": "#e4e1e9",
+                        "secondary-fixed": "#4dffb2"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Space Grotesk"],
+                        "mono": ["JetBrains Mono"]
+                    },
+                    borderRadius: { "DEFAULT": "0rem", "lg": "0rem", "xl": "0rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-image: linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+            background-size: 100% 3px;
+            background-attachment: fixed;
+        }
+        .corner-bracket-tl::before { content: ''; position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-top: 1.5px solid #00F0FF; border-left: 1.5px solid #00F0FF; }
+        .corner-bracket-tr::before { content: ''; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-top: 1.5px solid #00F0FF; border-right: 1.5px solid #00F0FF; }
+        .corner-bracket-bl::before { content: ''; position: absolute; bottom: 0; left: 0; width: 8px; height: 8px; border-bottom: 1.5px solid #00F0FF; border-left: 1.5px solid #00F0FF; }
+        .corner-bracket-br::before { content: ''; position: absolute; bottom: 0; right: 0; width: 8px; height: 8px; border-bottom: 1.5px solid #00F0FF; border-right: 1.5px solid #00F0FF; }
+        .glow-primary { box-shadow: 0 0 12px rgba(0, 240, 255, 0.2); }
+        .scanline-active { position: relative; overflow: hidden; }
+        .scanline-active::after {
+            content: "";
+            position: absolute;
+            top: -100%;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.05), transparent);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary-container selection:text-on-primary">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 h-16 bg-[#0A0A0F] bg-opacity-90 backdrop-blur-md border-b-[0.5px] border-[#00F0FF]/20 shadow-[0_0_8px_0_rgba(0,240,255,0.3)]">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black text-[#00F0FF] tracking-tighter font-headline">R.I.D.</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="font-headline uppercase tracking-[0.05em] text-sm text-slate-500 hover:text-[#00F0FF]/70 transition-all duration-100" href="#">DASHBOARD</a>
+<a class="font-headline uppercase tracking-[0.05em] text-sm text-slate-500 hover:text-[#00F0FF]/70 transition-all duration-100" href="#">COCKPIT</a>
+<a class="font-headline uppercase tracking-[0.05em] text-sm text-[#00F0FF] border-b-2 border-[#00F0FF] pb-1 shadow-[0_4px_10px_-2px_rgba(0,240,255,0.5)]" href="#">WORKBENCH</a>
+<a class="font-headline uppercase tracking-[0.05em] text-sm text-slate-500 hover:text-[#00F0FF]/70 transition-all duration-100" href="#">AGENTIC HUB</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden sm:block">
+<input class="bg-[#12121A] border-none border-b border-outline-variant focus:ring-0 focus:border-primary-container text-xs font-mono w-48 py-1 placeholder:text-slate-600" placeholder="SEARCH_DATABASE..." type="text"/>
+<span class="material-symbols-outlined absolute right-0 top-1 text-sm text-outline">search</span>
+</div>
+<span class="material-symbols-outlined text-[#00F0FF] cursor-crosshair hover:bg-[#00F0FF]/10 p-1">settings</span>
+<span class="material-symbols-outlined text-[#00F0FF] cursor-crosshair hover:bg-[#00F0FF]/10 p-1">notifications_active</span>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] z-40 flex flex-col pt-4 bg-[#12121A] border-r-[0.5px] border-[#00F0FF]/15 w-20 md:w-64">
+<div class="px-6 py-4 mb-4 border-b border-[#00F0FF]/10">
+<div class="text-[10px] font-mono text-[#00F0FF] mb-1">[01] STATUS: ACTIVE</div>
+<div class="text-[10px] font-mono text-slate-500">40.7128° N, 74.0060° W</div>
+</div>
+<nav class="flex-1 flex flex-col">
+<div class="group flex items-center px-6 py-4 gap-4 text-slate-600 hover:bg-[#1B1B20] hover:text-[#00F0FF] cursor-pointer transition-none">
+<span class="material-symbols-outlined text-xl">terminal</span>
+<span class="font-mono text-xs uppercase hidden md:block">TERMINAL</span>
+</div>
+<div class="group flex items-center px-6 py-4 gap-4 text-slate-600 hover:bg-[#1B1B20] hover:text-[#00F0FF] cursor-pointer transition-none">
+<span class="material-symbols-outlined text-xl">analytics</span>
+<span class="font-mono text-xs uppercase hidden md:block">TELEMETRY</span>
+</div>
+<div class="group flex items-center px-6 py-4 gap-4 text-slate-600 hover:bg-[#1B1B20] hover:text-[#00F0FF] cursor-pointer transition-none">
+<span class="material-symbols-outlined text-xl">inventory_2</span>
+<span class="font-mono text-xs uppercase hidden md:block">ARCHIVES</span>
+</div>
+<div class="group flex items-center px-6 py-4 gap-4 bg-[#00F0FF]/10 text-[#00F0FF] border-l-4 border-[#00F0FF] transition-none">
+<span class="material-symbols-outlined text-xl">settings_input_component</span>
+<span class="font-mono text-xs uppercase hidden md:block">SYSTEM</span>
+</div>
+</nav>
+<div class="p-6 mt-auto border-t border-[#00F0FF]/10">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary-container/20 border border-primary-container flex items-center justify-center">
+<span class="material-symbols-outlined text-primary-container text-sm">person</span>
+</div>
+<div class="hidden md:block">
+<div class="text-[10px] font-mono text-white">OPERATOR_01</div>
+<div class="text-[8px] font-mono text-[#00F0FF]">LVL_4_AUTH</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-20 md:ml-64 pt-24 pb-8 px-8 min-h-screen">
+<!-- View Header -->
+<div class="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+<div>
+<h1 class="font-headline text-4xl font-black uppercase tracking-tighter text-[#00F0FF] flex items-baseline gap-3">
+                    Workbench <span class="text-sm font-mono text-slate-600 font-normal">/Pipeline_v2.04</span>
+</h1>
+<p class="text-xs font-mono text-slate-500 mt-1 uppercase">Mission Control Research Pipeline - Active Session: RID_ALPHA_9</p>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-2 bg-primary-container text-on-primary-fixed font-headline font-bold text-xs uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">add</span> New Target
+                </button>
+<button class="px-4 py-2 border border-outline text-primary-fixed font-headline font-bold text-xs uppercase hover:bg-primary-container/10 transition-colors">
+                    Filter View
+                </button>
+</div>
+</div>
+<!-- Pipeline Kanban Board -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+<!-- Column 1: QUEUED -->
+<section class="flex flex-col gap-4">
+<div class="flex items-center justify-between border-b border-[#00F0FF]/20 pb-2">
+<h2 class="font-headline font-bold text-lg uppercase tracking-wider text-[#00F0FF] flex items-center gap-2">
+<span class="w-2 h-2 bg-[#00F0FF] block"></span> QUEUED
+                    </h2>
+<span class="bg-[#12121A] border border-[#00F0FF]/30 text-[#00F0FF] font-mono text-[10px] px-2 py-0.5">COUNT: 03</span>
+</div>
+<!-- Queue Item 1 -->
+<article class="relative bg-surface-container-low p-5 border border-transparent hover:border-[#00F0FF]/30 group transition-all duration-100 corner-bracket-tl corner-bracket-br">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/30">TOOL</span>
+<span class="text-[8px] font-mono text-slate-600">ID: Q-0492</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">NEURAL_FLUX_SCALER</h3>
+<p class="text-xs text-slate-400 mb-5 leading-relaxed">Analyzing dimensional integrity loss in localized subspace fragments. Priority Level: HIGH.</p>
+<button class="w-full py-2 border border-[#00F0FF] text-[#00F0FF] font-headline font-bold text-xs uppercase hover:bg-[#00F0FF]/10 tracking-widest transition-all">
+                        START RESEARCH
+                    </button>
+<div class="absolute top-2 right-2 text-[8px] font-mono text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity">40.71° N</div>
+</article>
+<!-- Queue Item 2 -->
+<article class="relative bg-surface-container-low p-5 border border-transparent hover:border-[#00F0FF]/30 group transition-all duration-100 corner-bracket-tl corner-bracket-br">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/30">METHOD</span>
+<span class="text-[8px] font-mono text-slate-600">ID: Q-0881</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">RECURSIVE_TRACING_V3</h3>
+<p class="text-xs text-slate-400 mb-5 leading-relaxed">Protocol for identifying phantom nodes within encrypted data structures without triggering alarms.</p>
+<button class="w-full py-2 border border-[#00F0FF] text-[#00F0FF] font-headline font-bold text-xs uppercase hover:bg-[#00F0FF]/10 tracking-widest transition-all">
+                        START RESEARCH
+                    </button>
+</article>
+<!-- Queue Item 3 -->
+<article class="relative bg-surface-container-low p-5 border border-transparent hover:border-[#00F0FF]/30 group transition-all duration-100 corner-bracket-tl corner-bracket-br">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest bg-[#6366F1]/10 text-[#6366F1] border border-[#6366F1]/30">INSTAGRAM</span>
+<span class="text-[8px] font-mono text-slate-600">ID: Q-1129</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">SOCIAL_OSINT_MAPPER</h3>
+<p class="text-xs text-slate-400 mb-5 leading-relaxed">Geospatial extraction from metadata-stripped visual assets in high-security accounts.</p>
+<button class="w-full py-2 border border-[#00F0FF] text-[#00F0FF] font-headline font-bold text-xs uppercase hover:bg-[#00F0FF]/10 tracking-widest transition-all">
+                        START RESEARCH
+                    </button>
+</article>
+</section>
+<!-- Column 2: RESEARCHING -->
+<section class="flex flex-col gap-4">
+<div class="flex items-center justify-between border-b border-[#00F0FF]/20 pb-2">
+<h2 class="font-headline font-bold text-lg uppercase tracking-wider text-[#00F0FF] flex items-center gap-2">
+<span class="w-2 h-2 bg-[#00F0FF] animate-pulse shadow-[0_0_8px_#00F0FF] block"></span> RESEARCHING
+                    </h2>
+<span class="bg-[#12121A] border border-[#00F0FF]/30 text-[#00F0FF] font-mono text-[10px] px-2 py-0.5">COUNT: 02</span>
+</div>
+<!-- Researching Item 1 -->
+<article class="relative bg-surface-container-high p-5 border border-[#00F0FF]/40 glow-primary scanline-active corner-bracket-tl corner-bracket-tr corner-bracket-bl corner-bracket-br">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-[#00F0FF] animate-ping"></div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#00F0FF]">ACTIVE_SCAN</span>
+</div>
+<span class="text-[8px] font-mono text-[#00F0FF]">EST: 02m 44s</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">QUANTUM_CRYPT_BREAKER</h3>
+<div class="bg-black/40 p-3 mb-4 border-l-2 border-[#00F0FF]/50">
+<div class="text-[9px] font-mono text-[#00F0FF]/80 leading-tight">
+                            &gt; INITIALIZING_SYMMETRIC_SWEEP...<br/>
+                            &gt; ENTROPY_LEVEL: 0.99283<br/>
+                            &gt; INJECTING_HEURISTIC_PAYLOAD_01<br/>
+                            &gt; NODE_RESPONSE: 200_OK_VERIFIED
+                        </div>
+</div>
+<button class="w-full py-2 bg-primary-container text-on-primary-fixed font-headline font-bold text-xs uppercase hover:bg-white transition-all tracking-widest">
+                        VIEW LOG
+                    </button>
+</article>
+<!-- Researching Item 2 -->
+<article class="relative bg-surface-container-high p-5 border border-[#00F0FF]/40 glow-primary scanline-active corner-bracket-tl corner-bracket-tr corner-bracket-bl corner-bracket-br">
+<div class="flex justify-between items-start mb-3">
+<div class="flex items-center gap-2">
+<div class="w-1.5 h-1.5 rounded-full bg-[#00F0FF] animate-ping"></div>
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#00F0FF]">LIVE_TELEMETRY</span>
+</div>
+<span class="text-[8px] font-mono text-[#00F0FF]">EST: 14m 12s</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">SIGNAL_INT_ALPHA</h3>
+<div class="bg-black/40 p-3 mb-4 border-l-2 border-[#00F0FF]/50">
+<div class="text-[9px] font-mono text-[#00F0FF]/80 leading-tight">
+                            &gt; LISTENING_ON_FREQ_92.4GHZ<br/>
+                            &gt; PACKET_LOSS: 0.00%<br/>
+                            &gt; TRIANGULATING_COORDS...<br/>
+                            &gt; TARGET_ID: "GHOST_OPERATOR"
+                        </div>
+</div>
+<button class="w-full py-2 bg-primary-container text-on-primary-fixed font-headline font-bold text-xs uppercase hover:bg-white transition-all tracking-widest">
+                        VIEW LOG
+                    </button>
+</article>
+</section>
+<!-- Column 3: COMPLETED -->
+<section class="flex flex-col gap-4">
+<div class="flex items-center justify-between border-b border-[#00F0FF]/20 pb-2">
+<h2 class="font-headline font-bold text-lg uppercase tracking-wider text-[#00F0FF] flex items-center gap-2">
+<span class="w-2 h-2 border border-[#00F0FF] block"></span> COMPLETED
+                    </h2>
+<span class="bg-[#12121A] border border-[#00F0FF]/30 text-[#00F0FF] font-mono text-[10px] px-2 py-0.5">COUNT: 02</span>
+</div>
+<!-- Completed Item 1 -->
+<article class="relative bg-surface-container-low/50 p-5 border border-white/5 corner-bracket-tl corner-bracket-br opacity-80 hover:opacity-100 transition-opacity">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest bg-secondary-container/10 text-secondary-container border border-secondary-container/30">PROGRAMMATIC</span>
+<span class="text-[8px] font-mono text-slate-600">ID: C-9011</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">GEO_FENCE_CRACK</h3>
+<p class="text-[11px] text-slate-500 mb-5 leading-relaxed">Successful extraction of restricted perimeter logs. Verified 14 entry points and 2 vulnerable bypasses in standard firmware.</p>
+<div class="flex flex-col gap-2">
+<button class="w-full py-1.5 bg-[#00F0FF] text-black font-headline font-bold text-[10px] uppercase tracking-widest">VIEW REPORT</button>
+<div class="grid grid-cols-2 gap-2">
+<button class="py-1.5 bg-[#ffba20] text-black font-headline font-bold text-[10px] uppercase">SANDBOX</button>
+<button class="py-1.5 border border-slate-700 text-slate-400 font-headline font-bold text-[10px] uppercase hover:text-white">OBSIDIAN</button>
+</div>
+</div>
+</article>
+<!-- Completed Item 2 -->
+<article class="relative bg-surface-container-low/50 p-5 border border-white/5 corner-bracket-tl corner-bracket-br opacity-80 hover:opacity-100 transition-opacity">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest bg-[#ffba20]/10 text-[#ffba20] border border-[#ffba20]/30">MANUAL</span>
+<span class="text-[8px] font-mono text-slate-600">ID: C-7728</span>
+</div>
+<h3 class="font-headline font-bold text-white uppercase text-base leading-tight mb-2">PROXY_RECON_PHI</h3>
+<p class="text-[11px] text-slate-500 mb-5 leading-relaxed">Manual verification complete. Proxy chain terminates in isolated server farm. No digital fingerprint detected during egress.</p>
+<div class="flex flex-col gap-2">
+<button class="w-full py-1.5 bg-[#00F0FF] text-black font-headline font-bold text-[10px] uppercase tracking-widest">VIEW REPORT</button>
+<div class="grid grid-cols-2 gap-2">
+<button class="py-1.5 bg-[#ffba20] text-black font-headline font-bold text-[10px] uppercase">SANDBOX</button>
+<button class="py-1.5 border border-slate-700 text-slate-400 font-headline font-bold text-[10px] uppercase hover:text-white">OBSIDIAN</button>
+</div>
+</div>
+</article>
+</section>
+</div>
+<!-- System Footer Telemetry -->
+<footer class="mt-12 pt-6 border-t border-[#00F0FF]/10 flex flex-col md:flex-row justify-between items-center gap-6">
+<div class="flex items-center gap-8">
+<div class="flex flex-col">
+<span class="text-[8px] font-mono text-slate-600 uppercase">System Integrity</span>
+<div class="flex gap-1 mt-1">
+<div class="w-3 h-1 bg-[#00F0FF]"></div>
+<div class="w-3 h-1 bg-[#00F0FF]"></div>
+<div class="w-3 h-1 bg-[#00F0FF]"></div>
+<div class="w-3 h-1 bg-[#00F0FF]"></div>
+<div class="w-3 h-1 bg-slate-800"></div>
+</div>
+</div>
+<div class="flex flex-col">
+<span class="text-[8px] font-mono text-slate-600 uppercase">Uptime</span>
+<span class="text-[10px] font-mono text-[#00F0FF]">104:12:09:55</span>
+</div>
+</div>
+<div class="flex items-center gap-4 text-[9px] font-mono text-slate-500 italic">
+<span>R.I.D. SYSTEM CORE v1.0.8 // AGENTIC PIPELINE ACTIVE // NO UNAUTHORIZED ACCESS</span>
+</div>
+</footer>
+</main>
+<!-- Visual Overlays -->
+<div class="fixed inset-0 pointer-events-none border-[1px] border-[#00F0FF]/5 z-[100]"></div>
+<div class="fixed top-0 left-0 w-full h-1 bg-[#00F0FF]/10 z-[100] blur-sm"></div>
+</body></html>
