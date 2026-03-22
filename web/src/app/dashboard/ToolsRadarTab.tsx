@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { GlowButton } from "@/components/ui/glow-button";
 import { apiMutate } from "@/lib/api";
@@ -9,8 +10,9 @@ import { FeedSkeleton } from "./Skeleton";
 import type { ToolItem } from "./types";
 
 function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
-  const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const reduceMotion = useReducedMotion();
 
   const dotColor =
     tool.status === "offline"
@@ -19,7 +21,8 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
         ? "bg-accent-amber shadow-[0_0_5px_#ffbf00]"
         : "bg-accent-green shadow-[0_0_5px_#39ff14]";
 
-  const handleWorkbench = useCallback(async () => {
+  const handleWorkbench = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (wbStatus !== "idle") return;
     setWbStatus("sending");
     try {
@@ -45,15 +48,26 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
   }, [tool, wbStatus]);
 
   return (
-    <div
-      className={`bg-bg-surface p-5 border-l-4 border-accent-green group transition-all duration-150 cursor-pointer ${
-        expanded ? "ring-1 ring-accent-green/30" : "hover:bg-surface-high/50"
-      }`}
-      onClick={() => setExpanded((prev) => !prev)}
+    <m.div
+      className="bg-bg-surface p-5 border-l-4 border-accent-green group cursor-pointer"
+      animate={{
+        backgroundColor: hovered ? "rgba(0, 240, 255, 0.06)" : "rgba(17, 24, 39, 1)",
+        boxShadow: hovered
+          ? "inset 0 0 0 1px rgba(57, 255, 20, 0.3)"
+          : "inset 0 0 0 1px rgba(57, 255, 20, 0)",
+      }}
+      transition={{ duration: 0.15 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {/* Header row */}
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-center gap-3">
-          <div className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} />
+          <m.div
+            className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`}
+            animate={{ scale: hovered ? 1.5 : 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+          />
           <h3 className="font-mono font-bold text-white group-hover:text-accent-cyan transition-colors">
             {tool.name}
           </h3>
@@ -86,52 +100,80 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
         </p>
       )}
 
-      {/* Expanded content */}
-      {expanded && (
-        <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4" onClick={(e) => e.stopPropagation()}>
-          {tool.source && (
-            <div>
-              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
-                Source
-              </p>
-              <p className="font-mono text-[11px] text-accent-cyan/70">{tool.source}</p>
-            </div>
-          )}
+      {/* Animated hover-reveal drawer */}
+      <AnimatePresence>
+        {hovered && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { height: { type: "spring", stiffness: 500, damping: 30 }, opacity: { duration: 0.2 } }
+            }
+            className="overflow-hidden"
+          >
+            <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4">
+              {tool.source && (
+                <m.div
+                  initial={{ x: -10 }}
+                  animate={{ x: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.04 }}
+                >
+                  <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                    Source
+                  </p>
+                  <p className="font-mono text-[11px] text-accent-cyan/70">{tool.source}</p>
+                </m.div>
+              )}
 
-          {tool.url && (
-            <div>
-              <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
-                URL
-              </p>
-              <a
-                href={tool.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-[11px] text-accent-cyan hover:underline"
+              {tool.url && (
+                <m.div
+                  initial={{ x: -10 }}
+                  animate={{ x: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.06 }}
+                >
+                  <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
+                    URL
+                  </p>
+                  <a
+                    href={tool.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-[11px] text-accent-cyan hover:underline"
+                  >
+                    {tool.url}
+                  </a>
+                </m.div>
+              )}
+
+              <m.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
+                className="flex gap-3"
+                onClick={(e) => e.stopPropagation()}
               >
-                {tool.url}
-              </a>
+                <GlowButton
+                  variant="secondary"
+                  className="flex-1 py-2 text-[10px]"
+                  onClick={handleWorkbench}
+                  disabled={wbStatus !== "idle"}
+                >
+                  {wbStatus === "sent" ? "SENT TO WORKBENCH" : wbStatus === "sending" ? "SENDING..." : "SEND TO WORKBENCH"}
+                </GlowButton>
+              </m.div>
             </div>
-          )}
-
-          <div className="flex gap-3">
-            <GlowButton
-              variant="secondary"
-              className="flex-1 py-2 text-[10px]"
-              onClick={handleWorkbench}
-              disabled={wbStatus !== "idle"}
-            >
-              {wbStatus === "sent" ? "SENT TO WORKBENCH" : wbStatus === "sending" ? "SENDING..." : "SEND TO WORKBENCH"}
-            </GlowButton>
-          </div>
-        </div>
-      )}
-    </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </m.div>
   );
 }
 
 /**
- * ToolsRadarTab — Full tools radar view with category filter and expandable cards.
+ * ToolsRadarTab — Full tools radar view with category filter and animated hover-reveal cards.
  */
 export function ToolsRadarTab() {
   const { data, isLoading } = useTools();
