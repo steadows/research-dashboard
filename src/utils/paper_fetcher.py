@@ -425,9 +425,7 @@ def _fetch_from_semantic_scholar(
         raise
 
 
-def _fetch_from_openalex(
-    title: str, client: httpx.Client
-) -> dict[str, Any] | None:
+def _fetch_from_openalex(title: str, client: httpx.Client) -> dict[str, Any] | None:
     """Query OpenAlex as fallback and return a Semantic Scholar-shaped paper dict.
 
     OpenAlex is free with no API key and generous rate limits (10 req/sec polite,
@@ -451,7 +449,10 @@ def _fetch_from_openalex(
     headers = {"User-Agent": "ResearchDashboard/1.0 (mailto:polite@example.com)"}
     try:
         response = client.get(
-            _OPENALEX_SEARCH_URL, params=params, headers=headers, timeout=_REQUEST_TIMEOUT
+            _OPENALEX_SEARCH_URL,
+            params=params,
+            headers=headers,
+            timeout=_REQUEST_TIMEOUT,
         )
         response.raise_for_status()
         data = response.json()

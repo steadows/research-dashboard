@@ -493,7 +493,9 @@ def run_ingestion(
 
             entities = build_entity_index(vault_path)
             linked = sum(1 for p in written if link_note(p, entities))
-            logger.info("Knowledge linker: linked %d / %d new notes", linked, len(written))
+            logger.info(
+                "Knowledge linker: linked %d / %d new notes", linked, len(written)
+            )
         except Exception as exc:
             logger.warning("Knowledge linker failed (non-fatal): %s", exc)
 

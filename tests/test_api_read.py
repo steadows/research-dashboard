@@ -4,9 +4,10 @@ TDD RED phase: all tests written before implementation.
 Mocks all parsers at the boundary to test endpoint shapes only.
 """
 
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import networkx as nx
 import pytest
@@ -173,71 +174,246 @@ def _mock_project_context() -> dict[str, Any]:
 @pytest.fixture
 def client() -> TestClient:
     """Create a test client with all parsers mocked."""
-    with (
-        patch.dict("os.environ", {"OBSIDIAN_VAULT_PATH": _VAULT}),
-        patch("api.deps.get_vault_path", return_value=Path(_VAULT)),
-        patch("utils.vault_parser.parse_projects", return_value=_MOCK_PROJECTS),
-        patch("utils.methods_parser.parse_methods", return_value=_MOCK_METHODS),
-        patch("utils.tools_parser.parse_tools", return_value=_MOCK_TOOLS),
-        patch("utils.blog_queue_parser.parse_blog_queue", return_value=_MOCK_BLOG),
-        patch(
-            "utils.reports_parser.parse_journalclub_reports",
-            return_value=_MOCK_JC_REPORTS,
-        ),
-        patch(
-            "utils.reports_parser.parse_tldr_reports",
-            return_value=_MOCK_TLDR_REPORTS,
-        ),
-        patch(
-            "utils.instagram_parser.parse_instagram_posts",
-            return_value=_MOCK_INSTAGRAM,
-        ),
-        patch(
-            "utils.smart_matcher.build_smart_project_index",
-            return_value=_MOCK_SMART_INDEX,
-        ),
-        patch(
-            "utils.workbench_tracker.get_workbench_items",
-            return_value=_MOCK_WORKBENCH,
-        ),
-        patch(
-            "utils.workbench_tracker.get_workbench_item",
-            side_effect=lambda key, **kw: _MOCK_WORKBENCH.get(key),
-        ),
-        patch("utils.graph_engine.build_vault_graph", return_value=_mock_graph()),
-        patch("utils.graph_engine.get_graph_health", return_value=_mock_health()),
-        patch(
-            "utils.graph_engine.detect_communities",
-            return_value=_mock_communities(),
-        ),
-        patch(
-            "utils.graph_engine.compute_centrality_metrics",
-            return_value={
-                "pagerank": {"Axon": 0.45, "Wealth Manager": 0.3, "Methods": 0.25},
-                "betweenness": {"Axon": 0.5, "Wealth Manager": 0.0, "Methods": 0.0},
-                "degree": {"Axon": 2, "Wealth Manager": 1, "Methods": 1},
-                "in_degree": {"Axon": 0, "Wealth Manager": 1, "Methods": 1},
-                "out_degree": {"Axon": 2, "Wealth Manager": 0, "Methods": 0},
+    with ExitStack() as stack:
+        p = stack.enter_context
+
+        p(patch.dict("os.environ", {"OBSIDIAN_VAULT_PATH": _VAULT}))
+        p(patch("api.deps.get_vault_path", return_value=Path(_VAULT)))
+
+        # Parsers — patch at both source and router-level imports
+        p(patch("utils.vault_parser.parse_projects", return_value=_MOCK_PROJECTS))
+        p(patch("utils.methods_parser.parse_methods", return_value=_MOCK_METHODS))
+        p(patch("utils.tools_parser.parse_tools", return_value=_MOCK_TOOLS))
+        p(patch("utils.blog_queue_parser.parse_blog_queue", return_value=_MOCK_BLOG))
+        p(
+            patch(
+                "utils.reports_parser.parse_journalclub_reports",
+                return_value=_MOCK_JC_REPORTS,
+            )
+        )
+        p(
+            patch(
+                "utils.reports_parser.parse_tldr_reports",
+                return_value=_MOCK_TLDR_REPORTS,
+            )
+        )
+        p(
+            patch(
+                "utils.instagram_parser.parse_instagram_posts",
+                return_value=_MOCK_INSTAGRAM,
+            )
+        )
+        p(
+            patch(
+                "utils.smart_matcher.build_smart_project_index",
+                return_value=_MOCK_SMART_INDEX,
+            )
+        )
+        # Router-level parser patches (for test ordering safety)
+        p(patch("api.routers.content.parse_methods", return_value=_MOCK_METHODS))
+        p(patch("api.routers.content.parse_tools", return_value=_MOCK_TOOLS))
+        p(patch("api.routers.content.parse_blog_queue", return_value=_MOCK_BLOG))
+        p(
+            patch(
+                "api.routers.content.parse_journalclub_reports",
+                return_value=_MOCK_JC_REPORTS,
+            )
+        )
+        p(
+            patch(
+                "api.routers.content.parse_tldr_reports",
+                return_value=_MOCK_TLDR_REPORTS,
+            )
+        )
+        p(
+            patch(
+                "api.routers.content.parse_instagram_posts",
+                return_value=_MOCK_INSTAGRAM,
+            )
+        )
+        p(patch("api.routers.projects.parse_projects", return_value=_MOCK_PROJECTS))
+        p(
+            patch(
+                "api.routers.projects.build_smart_project_index",
+                return_value=_MOCK_SMART_INDEX,
+            )
+        )
+
+        # Workbench
+        p(
+            patch(
+                "utils.workbench_tracker.get_workbench_items",
+                return_value=_MOCK_WORKBENCH,
+            )
+        )
+        p(
+            patch(
+                "utils.workbench_tracker.get_workbench_item",
+                side_effect=lambda key, **kw: _MOCK_WORKBENCH.get(key),
+            )
+        )
+        p(patch("utils.workbench_tracker.add_to_workbench"))
+        p(patch("utils.workbench_tracker.update_workbench_item"))
+        p(patch("utils.workbench_tracker.remove_from_workbench"))
+
+        # Graph engine — patch at both source and router-level imports
+        _metrics = {
+            "pagerank": {"Axon": 0.45, "Wealth Manager": 0.3, "Methods": 0.25},
+            "betweenness": {"Axon": 0.5, "Wealth Manager": 0.0, "Methods": 0.0},
+            "degree": {"Axon": 2, "Wealth Manager": 1, "Methods": 1},
+            "in_degree": {"Axon": 0, "Wealth Manager": 1, "Methods": 1},
+            "out_degree": {"Axon": 2, "Wealth Manager": 0, "Methods": 0},
+        }
+        _graph_items = [
+            {
+                "name": "Graph RAG for Code Search",
+                "source_type": "method",
+                "match_type": "explicit",
+                "confidence": 1.0,
+                "discovery_source": "linked",
+                "via_project": None,
             },
-        ),
-        patch(
-            "utils.graph_engine.get_project_context",
-            return_value=_mock_project_context(),
-        ),
-        patch(
-            "utils.smart_matcher.get_graph_linked_items",
-            return_value=[
-                {
-                    "name": "Graph RAG for Code Search",
-                    "source_type": "method",
-                    "match_type": "explicit",
-                    "confidence": 1.0,
-                    "discovery_source": "linked",
-                    "via_project": None,
-                },
-            ],
-        ),
-    ):
+        ]
+        p(patch("utils.graph_engine.build_vault_graph", return_value=_mock_graph()))
+        p(patch("utils.graph_engine.get_graph_health", return_value=_mock_health()))
+        p(
+            patch(
+                "utils.graph_engine.detect_communities",
+                return_value=_mock_communities(),
+            )
+        )
+        p(patch("utils.graph_engine.compute_centrality_metrics", return_value=_metrics))
+        p(
+            patch(
+                "utils.graph_engine.get_project_context",
+                return_value=_mock_project_context(),
+            )
+        )
+        p(
+            patch(
+                "utils.smart_matcher.get_graph_linked_items", return_value=_graph_items
+            )
+        )
+        # Router-level graph patches
+        p(patch("api.routers.graph.build_vault_graph", return_value=_mock_graph()))
+        p(patch("api.routers.graph.get_graph_health", return_value=_mock_health()))
+        p(
+            patch(
+                "api.routers.graph.detect_communities", return_value=_mock_communities()
+            )
+        )
+        p(patch("api.routers.graph.compute_centrality_metrics", return_value=_metrics))
+        p(
+            patch(
+                "api.routers.graph.get_project_context",
+                return_value=_mock_project_context(),
+            )
+        )
+        p(
+            patch(
+                "api.routers.graph.build_smart_project_index",
+                return_value=_MOCK_SMART_INDEX,
+            )
+        )
+        p(patch("api.routers.graph.get_graph_linked_items", return_value=_graph_items))
+        p(
+            patch(
+                "api.routers.projects.get_project_context",
+                return_value=_mock_project_context(),
+            )
+        )
+        p(
+            patch(
+                "api.routers.projects.get_graph_linked_items", return_value=_graph_items
+            )
+        )
+
+        # Mutation stubs (needed since app now includes mutation routers)
+        # Patch both source modules and router-level imports for test ordering safety
+        _empty_analysis = {
+            "response": "",
+            "model": "",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost": 0,
+        }
+        _proc = MagicMock(pid=1)
+        p(patch("utils.status_tracker.get_item_status", return_value="new"))
+        p(patch("utils.status_tracker.set_item_status"))
+        p(patch("api.routers.status.get_item_status", return_value="new"))
+        p(patch("api.routers.status.set_item_status"))
+        p(patch("utils.claude_client.analyze_item_quick", return_value=_empty_analysis))
+        p(patch("utils.claude_client.analyze_item_deep", return_value=_empty_analysis))
+        p(
+            patch(
+                "api.routers.analysis.analyze_item_quick", return_value=_empty_analysis
+            )
+        )
+        p(patch("api.routers.analysis.analyze_item_deep", return_value=_empty_analysis))
+        p(patch("utils.claude_client.summarize_instagram_post", return_value=""))
+        p(patch("utils.claude_client.generate_blog_draft", return_value=""))
+        p(patch("api.routers.content.summarize_instagram_post", return_value=""))
+        p(patch("api.routers.content.generate_blog_draft", return_value=""))
+        p(patch("api.routers.content.write_draft_mdx", return_value=Path("/tmp/x.mdx")))
+        p(
+            patch(
+                "utils.research_agent.launch_research_agent",
+                return_value=(_proc, "model"),
+            )
+        )
+        p(patch("utils.research_agent.is_agent_running", return_value=False))
+        p(patch("utils.research_agent.tail_log", return_value=""))
+        p(
+            patch(
+                "api.routers.research.launch_research_agent",
+                return_value=(_proc, "model"),
+            )
+        )
+        p(patch("api.routers.research.is_agent_running", return_value=False))
+        p(patch("api.routers.research.tail_log", return_value=""))
+        p(
+            patch(
+                "api.routers.research.get_workbench_item",
+                side_effect=lambda key, **kw: _MOCK_WORKBENCH.get(key),
+            )
+        )
+        p(patch("api.routers.research.update_workbench_item"))
+        p(patch("utils.instagram_ingester.run_ingestion", return_value=[]))
+        p(patch("api.routers.ingestion.run_ingestion", return_value=[]))
+        p(
+            patch(
+                "utils.blog_publisher.write_draft_mdx", return_value=Path("/tmp/x.mdx")
+            )
+        )
+        p(
+            patch(
+                "api.routers.workbench.get_workbench_items",
+                return_value=_MOCK_WORKBENCH,
+            )
+        )
+        p(
+            patch(
+                "api.routers.workbench.get_workbench_item",
+                side_effect=lambda key, **kw: _MOCK_WORKBENCH.get(key),
+            )
+        )
+        p(patch("api.routers.workbench.add_to_workbench"))
+        p(patch("api.routers.workbench.update_workbench_item"))
+        p(patch("api.routers.workbench.remove_from_workbench"))
+        p(
+            patch(
+                "api.ws.get_workbench_item",
+                side_effect=lambda key, **kw: _MOCK_WORKBENCH.get(key),
+            )
+        )
+        p(patch("api.ws.is_agent_running", return_value=False))
+        p(patch("api.ws.tail_log", return_value=""))
+
+        # Clear graph cache to prevent stale data between tests
+        from api.routers.graph import _graph_cache
+
+        _graph_cache.clear()
+
         from api.main import create_app
 
         app = create_app()

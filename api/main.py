@@ -5,7 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure src/ is on sys.path before any utils imports
 import api.deps  # noqa: F401
-from api.routers import content, graph, projects, workbench
+from api.routers import (
+    analysis,
+    content,
+    graph,
+    ingestion,
+    projects,
+    research,
+    status,
+    workbench,
+)
+from api import ws
 
 
 def create_app() -> FastAPI:
@@ -30,11 +40,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register routers
+    # Register routers — read-only
     app.include_router(projects.router)
     app.include_router(content.router)
     app.include_router(graph.router)
     app.include_router(workbench.router)
+
+    # Register routers — mutations
+    app.include_router(status.router)
+    app.include_router(analysis.router)
+    app.include_router(research.router)
+    app.include_router(ingestion.router)
+
+    # WebSocket
+    app.include_router(ws.router)
 
     return app
 
