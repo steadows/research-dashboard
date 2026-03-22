@@ -1,3 +1,4 @@
+import { useEffect, useRef, useCallback, useState } from "react";
 import type { Fetcher, SWRConfiguration } from "swr";
 
 // ─── Base URL Configuration ─────────────────────────────────────────────────
@@ -8,7 +9,8 @@ const API_BASE = "/api";
 /** WebSocket URL from env — direct connection in dev, reverse proxy in prod */
 const WS_BASE =
   typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_WS_URL ?? `ws://${window.location.host}`
+    ? process.env.NEXT_PUBLIC_WS_URL ??
+      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
     : "";
 
 // ─── SWR Fetcher ────────────────────────────────────────────────────────────
@@ -75,8 +77,6 @@ export async function apiMutate<T = unknown>(
 }
 
 // ─── WebSocket Hook ─────────────────────────────────────────────────────────
-
-import { useEffect, useRef, useCallback, useState } from "react";
 
 type WebSocketStatus = "connecting" | "open" | "closed" | "error";
 
@@ -152,7 +152,8 @@ export function useWebSocket({
 
       if (reconnect && retriesRef.current < maxRetries) {
         retriesRef.current += 1;
-        reconnectTimeoutRef.current = setTimeout(connect, reconnectDelay);
+        const delay = reconnectDelay * Math.pow(2, retriesRef.current - 1);
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
       }
     };
 

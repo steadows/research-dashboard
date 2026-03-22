@@ -2082,7 +2082,7 @@ git commit -m "feat: FastAPI mutation endpoints + WebSocket research log streami
 - [x] API proxy works (`/api/*` → FastAPI)
 - [x] **Verify**: Run `/steadows-verify`
 
-### [20h] Commit [~]
+### [20h] Commit [x]
 
 ```bash
 git add web/ GSD_PLAN.md
