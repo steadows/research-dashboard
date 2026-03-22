@@ -1,16 +1,18 @@
 """FastAPI application factory for the Research Intelligence Dashboard API."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure src/ is on sys.path before any utils imports
 import api.deps  # noqa: F401
+from api.routers import content, graph, projects, workbench
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
     Returns:
-        Configured FastAPI instance.
+        Configured FastAPI instance with CORS and all routers.
     """
     app = FastAPI(
         title="Research Intelligence Dashboard API",
@@ -18,6 +20,22 @@ def create_app() -> FastAPI:
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
     )
+
+    # CORS — locked to localhost:3000 (Next.js dev server)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Register routers
+    app.include_router(projects.router)
+    app.include_router(content.router)
+    app.include_router(graph.router)
+    app.include_router(workbench.router)
+
     return app
 
 
