@@ -1,8 +1,11 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
+import { GlowButton } from "@/components/ui/glow-button";
 import { SectionRevealGroup, SectionRevealItem } from "@/components/effects/SectionReveal";
+import { apiMutate } from "@/lib/api";
 import { useDashboardStats, useReports, useTools } from "./hooks";
 import { MetricCardsSkeleton, FeedSkeleton, ToolsListSkeleton } from "./Skeleton";
 import type { ReportItem, ToolItem } from "./types";
@@ -128,6 +131,9 @@ function ResearchFeed() {
 }
 
 function ToolRadarItem({ tool }: { tool: ToolItem }) {
+  const [hovered, setHovered] = useState(false);
+  const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+
   const dotColor =
     tool.status === "offline"
       ? "bg-accent-red"
@@ -135,19 +141,81 @@ function ToolRadarItem({ tool }: { tool: ToolItem }) {
         ? "bg-accent-amber shadow-[0_0_5px_#ffbf00]"
         : "bg-accent-green shadow-[0_0_5px_#39ff14]";
 
+  const handleWorkbench = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (wbStatus !== "idle") return;
+    setWbStatus("sending");
+    try {
+      await apiMutate("/workbench", {
+        body: {
+          item: {
+            source_type: "tool",
+            name: tool.name,
+            category: tool.category,
+            status: tool.status,
+            source: tool.source,
+            notes: tool.notes,
+          },
+        },
+      });
+      setWbStatus("sent");
+      setTimeout(() => setWbStatus("idle"), 2000);
+    } catch (err) {
+      console.error("Workbench send failed:", err);
+      setWbStatus("idle");
+    }
+  }, [tool, wbStatus]);
+
   return (
-    <div className="flex items-center justify-between group cursor-pointer hover:bg-accent-cyan/5 p-2 transition-colors">
-      <div className="flex items-center gap-3">
-        <div className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
-        <span className="font-mono text-sm text-white">
-          {tool.name.toUpperCase().replace(/\s+/g, "_")}
-        </span>
+    <div
+      className={`group cursor-pointer p-2 transition-all duration-200 ${
+        hovered ? "bg-accent-cyan/10 ring-1 ring-accent-cyan/20" : "hover:bg-accent-cyan/5"
+      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Collapsed row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <span className="font-mono text-sm text-white">
+            {tool.name.toUpperCase().replace(/\s+/g, "_")}
+          </span>
+        </div>
+        {tool.category && (
+          <span className="text-[9px] font-headline border border-outline-variant px-1.5 text-outline group-hover:text-accent-cyan group-hover:border-accent-cyan transition-colors">
+            {tool.category.toUpperCase()}
+          </span>
+        )}
       </div>
-      {tool.category && (
-        <span className="text-[9px] font-headline border border-outline-variant px-1.5 text-outline group-hover:text-accent-cyan group-hover:border-accent-cyan">
-          {tool.category.toUpperCase()}
-        </span>
-      )}
+
+      {/* Hover-reveal detail panel */}
+      <div
+        className={`overflow-hidden transition-all duration-200 ${
+          hovered ? "max-h-40 opacity-100 mt-2" : "max-h-0 opacity-0"
+        }`}
+      >
+        {tool.notes && (
+          <p className="font-mono text-[10px] text-text-secondary leading-relaxed mb-2 pl-[18px]">
+            {tool.notes}
+          </p>
+        )}
+        {tool.source && (
+          <p className="font-mono text-[9px] text-accent-cyan/50 mb-2 pl-[18px]">
+            via {tool.source}
+          </p>
+        )}
+        <div className="pl-[18px]">
+          <GlowButton
+            variant="secondary"
+            className="py-1 px-3 text-[9px]"
+            onClick={handleWorkbench}
+            disabled={wbStatus !== "idle"}
+          >
+            {wbStatus === "sent" ? "SENT" : wbStatus === "sending" ? "..." : "DEEP DIVE"}
+          </GlowButton>
+        </div>
+      </div>
     </div>
   );
 }
