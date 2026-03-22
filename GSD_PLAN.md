@@ -2010,7 +2010,7 @@ git commit -m "feat: FastAPI mutation endpoints + WebSocket research log streami
 
 ---
 
-## Session 20: Next.js Bootstrap + Design System + Layout Shell [ ]
+## Session 20: Next.js Bootstrap + Design System + Layout Shell [x]
 
 **Scope:** Initialize Next.js 16, port design system from Stitch spec + portfolio-v2, port effects components, build app shell with sidebar navigation.
 
@@ -2035,54 +2035,54 @@ git commit -m "feat: FastAPI mutation endpoints + WebSocket research log streami
 
 **Concurrency:** [20b] CSS + tokens and [20c] effects port are fully independent — run in parallel
 
-### [20a] Next.js Setup [ ]
+### [20a] Next.js Setup [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
-- [ ] **Research**: Query `context7` for Next.js 16 rewrite/proxy capabilities (`/vercel/next.js` → "rewrites proxy websocket upgrade next.config"). Also run `exa` search: `"next.js 16 websocket proxy rewrites"` to find community solutions. Document findings before configuring proxy.
-- [ ] `npx create-next-app@latest web/ --typescript --tailwind --app --src-dir`
-- [ ] Install deps: `framer-motion`, `d3`, `swr`, shadcn
-- [ ] API proxy in `next.config.ts`: `/api/*` → `localhost:8000`. **WebSocket note:** Next.js `rewrites` do not reliably proxy WebSocket upgrades — verify with Next 16 docs before relying on it. Fallback: frontend WebSocket hook connects directly to `ws://localhost:8000/ws/*` in dev (env var `NEXT_PUBLIC_WS_URL`), reverse proxy handles same-origin in production.
-- [ ] Frontend API client uses same-origin paths (`/api/*`) for HTTP. WebSocket URL sourced from `NEXT_PUBLIC_WS_URL` env var (defaults to same-origin `/ws/*` for production behind reverse proxy, `ws://localhost:8000` for local dev)
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] **Research**: Query `context7` for Next.js 16 rewrite/proxy capabilities (`/vercel/next.js` → "rewrites proxy websocket upgrade next.config"). Also run `exa` search: `"next.js 16 websocket proxy rewrites"` to find community solutions. Document findings before configuring proxy.
+- [x] `npx create-next-app@latest web/ --typescript --tailwind --app --src-dir`
+- [x] Install deps: `framer-motion`, `d3`, `swr`, shadcn
+- [x] API proxy in `next.config.ts`: `/api/*` → `localhost:8000`. **WebSocket note:** Next.js `rewrites` do not reliably proxy WebSocket upgrades — verify with Next 16 docs before relying on it. Fallback: frontend WebSocket hook connects directly to `ws://localhost:8000/ws/*` in dev (env var `NEXT_PUBLIC_WS_URL`), reverse proxy handles same-origin in production.
+- [x] Frontend API client uses same-origin paths (`/api/*`) for HTTP. WebSocket URL sourced from `NEXT_PUBLIC_WS_URL` env var (defaults to same-origin `/ws/*` for production behind reverse proxy, `ws://localhost:8000` for local dev)
 
-### [20b] Design System CSS [ ]
+### [20b] Design System CSS [x]
 
-- [ ] **Reference**: Query `context7` for Tailwind v4 `@theme` directive and CSS variable patterns (`/tailwindlabs/tailwindcss.com` → "@theme custom colors animations keyframes")
-- [ ] Port all tokens from `DESIGN_SYSTEM.md` into `globals.css`
-- [ ] Colors, glow utilities (4 colors × 4 types × 2 intensities)
-- [ ] Keyframe animations, corner bracket utility
-- [ ] 0px border-radius override
+- [x] **Reference**: Query `context7` for Tailwind v4 `@theme` directive and CSS variable patterns (`/tailwindlabs/tailwindcss.com` → "@theme custom colors animations keyframes")
+- [x] Port all tokens from `DESIGN_SYSTEM.md` into `globals.css`
+- [x] Colors, glow utilities (4 colors × 4 types × 2 intensities)
+- [x] Keyframe animations, corner bracket utility
+- [x] 0px border-radius override
 
-### [20c] Port Effects Components [ ]
+### [20c] Port Effects Components [x]
 
-- [ ] Port to `web/src/components/effects/`: GlitchText, SectionReveal, CursorEffect, HUDBracket, ScanLines, AnimatedGrid, FloatingParticles, BackgroundSystem, TypeWriter, ScrollIndicator
-- [ ] Source: `~/portfolio-v2/src/components/effects/`
-- [ ] Adapt: remove portfolio-specific props, add generic `className` passthrough
+- [x] Port to `web/src/components/effects/`: GlitchText, SectionReveal, CursorEffect, HUDBracket, ScanLines, AnimatedGrid, FloatingParticles, BackgroundSystem, TypeWriter, ScrollIndicator
+- [x] Source: `~/portfolio-v2/src/components/effects/`
+- [x] Adapt: remove portfolio-specific props, add generic `className` passthrough
 
-### [20d] Layout Shell [ ]
+### [20d] Layout Shell [x]
 
-- [ ] `layout.tsx` — BackgroundSystem + ScanLines + CursorEffect + fonts
-- [ ] Sidebar — route-aware nav with active cyan underline
-- [ ] Header — R.I.D. glitch title
-- [ ] ContentPanel — HUD bracket frame
-- [ ] Reference: `docs/designs/dashboard.html` nav structure
+- [x] `layout.tsx` — BackgroundSystem + ScanLines + CursorEffect + fonts
+- [x] Sidebar — route-aware nav with active cyan underline
+- [x] Header — R.I.D. glitch title
+- [x] ContentPanel — HUD bracket frame
+- [x] Reference: `docs/designs/dashboard.html` nav structure
 
-### [20e] Shared UI Components [ ]
+### [20e] Shared UI Components [x]
 
-- [ ] `HUDCard`, `Badge`, `MetricCard`, `StatusBadge`, `GlowButton`, `DataReadout`
-- [ ] All with 0px border-radius, glow (not shadow), corner brackets
+- [x] `HUDCard`, `Badge`, `MetricCard`, `StatusBadge`, `GlowButton`, `DataReadout`
+- [x] All with 0px border-radius, glow (not shadow), corner brackets
 
-### [20f] API Client [ ]
+### [20f] API Client [x]
 
-- [ ] `web/src/lib/api.ts` — SWR fetcher, mutation helpers, WebSocket hook
+- [x] `web/src/lib/api.ts` — SWR fetcher, mutation helpers, WebSocket hook
 
-### [20g] Quality Gate [ ]
+### [20g] Quality Gate [x]
 
-- [ ] `pnpm build` passes
-- [ ] Visual audit against design system
-- [ ] API proxy works (`/api/*` → FastAPI)
-- [ ] **Verify**: Run `/steadows-verify`
+- [x] `pnpm build` passes
+- [x] Visual audit against design system
+- [x] API proxy works (`/api/*` → FastAPI)
+- [x] **Verify**: Run `/steadows-verify`
 
-### [20h] Commit [ ]
+### [20h] Commit [~]
 
 ```bash
 git add web/ GSD_PLAN.md
