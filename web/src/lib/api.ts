@@ -78,7 +78,7 @@ export async function apiMutate<T = unknown>(
 
 // ─── WebSocket Hook ─────────────────────────────────────────────────────────
 
-type WebSocketStatus = "connecting" | "open" | "closed" | "error";
+export type WebSocketStatus = "connecting" | "open" | "closed" | "error";
 
 interface UseWebSocketOptions {
   /** WebSocket path (appended to WS_BASE) */

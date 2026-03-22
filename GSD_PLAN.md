@@ -2260,33 +2260,33 @@ Requires Sessions 21 AND 22 complete.
 
 **Concurrency:** [23a] kanban UI and [23b] WebSocket log are independent — run in parallel
 
-### [23a] Workbench Kanban [ ]
+### [23a] Workbench Kanban [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
-- [ ] `web/src/app/workbench/page.tsx` — SWR for `/api/workbench`, 3-column layout (QUEUED / RESEARCHING / COMPLETED)
-- [ ] `KanbanColumn.tsx` — header + count badge + HUD bracket frame
-- [ ] `WorkbenchCard.tsx` — source badge, status, action buttons per state, Framer Motion `layoutId` for column transitions
-- [ ] Button-based transitions — no drag-and-drop (MVP)
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] `web/src/app/workbench/page.tsx` — SWR for `/api/workbench`, 3-column layout (QUEUED / RESEARCHING / COMPLETED)
+- [x] `KanbanColumn.tsx` — header + count badge + HUD bracket frame
+- [x] `WorkbenchCard.tsx` — source badge, status, action buttons per state, Framer Motion `layoutId` for column transitions
+- [x] Button-based transitions — no drag-and-drop (MVP)
 
-### [23b] WebSocket Research Log [ ]
+### [23b] WebSocket Research Log [x]
 
-- [ ] `ResearchLog.tsx` — connect to `/ws/research/{key}`
-- [ ] Terminal-style display (JetBrains Mono, cyan on dark surface)
-- [ ] Auto-scroll, connection status indicator
-- [ ] Agent activity parsing
+- [x] `ResearchLog.tsx` — connect to `/ws/research/{key}`
+- [x] Terminal-style display (JetBrains Mono, cyan on dark surface)
+- [x] Auto-scroll, connection status indicator
+- [x] Agent activity parsing
 
-### [23c] Research Flow [ ]
+### [23c] Research Flow [x]
 
-- [ ] Start Research → WebSocket log → parse output → show verdict badge
-- [ ] Verdict: PROGRAMMATIC (green) / MANUAL (amber)
-- [ ] Actions: View Report + Start Sandbox + Open in Obsidian
+- [x] Start Research → WebSocket log → parse output → show verdict badge
+- [x] Verdict: PROGRAMMATIC (green) / MANUAL (amber)
+- [x] Actions: View Report + Start Sandbox + Open in Obsidian
 
-### [23d] Agentic Hub Interactions [ ]
+### [23d] Agentic Hub Interactions [x]
 
-- [ ] Wire Summarize button (`POST /api/summarize/instagram`)
-- [ ] Wire Workbench button (`POST /api/workbench`)
-- [ ] Wire Refresh button (`POST /api/instagram/refresh` with progress indicator)
-- [ ] All from the Agentic Hub tab built in Session 21
+- [x] Wire Summarize button (`POST /api/summarize/instagram`)
+- [x] Wire Workbench button (`POST /api/workbench`)
+- [x] Wire Refresh button (`POST /api/instagram/refresh` with progress indicator)
+- [x] All from the Agentic Hub tab built in Session 21
 
 ### [23e] Quality Gate [ ]
 

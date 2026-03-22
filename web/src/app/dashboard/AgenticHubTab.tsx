@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useSWRConfig } from "swr";
 import { GlowButton } from "@/components/ui/glow-button";
 import { DataReadout } from "@/components/ui/data-readout";
+import { apiMutate } from "@/lib/api";
 import { useInstagramFeed } from "./hooks";
 import { AgenticCardSkeleton, Skeleton } from "./Skeleton";
 import type { InstagramPost } from "./types";
@@ -11,6 +13,55 @@ import type { InstagramPost } from "./types";
 
 function IntelCard({ post }: { post: InstagramPost }) {
   const isAnalyzed = post.status === "analyzed";
+  const [summary, setSummary] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+
+  const handleSummarize = useCallback(async () => {
+    if (summarizing) return;
+
+    // If already have a summary, just toggle visibility
+    if (summary) {
+      setShowSummary((prev) => !prev);
+      return;
+    }
+
+    setSummarizing(true);
+    try {
+      const result = await apiMutate<{ summary: string }>(
+        "/summarize/instagram",
+        { body: { post } }
+      );
+      setSummary(result.summary);
+      setShowSummary(true);
+    } catch (err) {
+      console.error("Summarize failed:", err);
+    } finally {
+      setSummarizing(false);
+    }
+  }, [post, summary, summarizing]);
+
+  const handleWorkbench = useCallback(async () => {
+    if (wbStatus !== "idle") return;
+    setWbStatus("sending");
+    try {
+      await apiMutate("/workbench", {
+        body: {
+          item: {
+            source_type: "instagram",
+            name: post.title,
+            ...post,
+          },
+        },
+      });
+      setWbStatus("sent");
+      setTimeout(() => setWbStatus("idle"), 2000);
+    } catch (err) {
+      console.error("Workbench send failed:", err);
+      setWbStatus("idle");
+    }
+  }, [post, wbStatus]);
 
   return (
     <div
@@ -67,6 +118,18 @@ function IntelCard({ post }: { post: InstagramPost }) {
         </div>
       )}
 
+      {/* Summary (expandable) */}
+      {showSummary && summary && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-headline font-bold text-accent-green uppercase tracking-[0.2em] border-b border-accent-green/20 pb-1">
+            Summary
+          </p>
+          <div className="bg-bg-base border border-accent-green/20 p-3 text-xs text-text-secondary leading-relaxed">
+            {summary}
+          </div>
+        </div>
+      )}
+
       {/* Tags */}
       {post.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
@@ -83,17 +146,38 @@ function IntelCard({ post }: { post: InstagramPost }) {
 
       {/* Actions */}
       <div className="mt-auto pt-4 flex items-center gap-3">
-        {isAnalyzed ? (
-          <GlowButton variant="primary" className="flex-1 py-2 text-[10px]">
-            VIEW SUMMARY
+        {isAnalyzed || summary ? (
+          <GlowButton
+            variant="primary"
+            className="flex-1 py-2 text-[10px]"
+            onClick={handleSummarize}
+          >
+            {showSummary ? "HIDE SUMMARY" : "VIEW SUMMARY"}
           </GlowButton>
         ) : (
-          <GlowButton variant="secondary" className="flex-1 py-2 text-[10px]">
-            SUMMARIZE
+          <GlowButton
+            variant="secondary"
+            className="flex-1 py-2 text-[10px]"
+            onClick={handleSummarize}
+            disabled={summarizing}
+          >
+            {summarizing ? "ANALYZING..." : "SUMMARIZE"}
           </GlowButton>
         )}
-        <button className="flex-1 bg-indigo text-white py-2 text-[10px] font-headline font-bold uppercase tracking-widest hover:opacity-90 transition-opacity">
-          WORKBENCH
+        <button
+          onClick={handleWorkbench}
+          disabled={wbStatus !== "idle"}
+          className={`flex-1 py-2 text-[10px] font-headline font-bold uppercase tracking-widest transition-all ${
+            wbStatus === "sent"
+              ? "bg-accent-green text-bg-base"
+              : "bg-indigo text-white hover:opacity-90"
+          } ${wbStatus === "sending" ? "opacity-60" : ""}`}
+        >
+          {wbStatus === "sent"
+            ? "SENT"
+            : wbStatus === "sending"
+              ? "SENDING..."
+              : "WORKBENCH"}
         </button>
       </div>
     </div>
@@ -235,7 +319,9 @@ function formatTimestamp(ts: string): string {
  */
 export function AgenticHubTab() {
   const { data, isLoading } = useInstagramFeed();
+  const { mutate } = useSWRConfig();
   const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [refreshing, setRefreshing] = useState(false);
 
   const accounts = useMemo(() => {
     if (!data) return [];
@@ -245,6 +331,21 @@ export function AgenticHubTab() {
   const filtered = data?.filter(
     (p) => accountFilter === "all" || p.account === accountFilter
   );
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing || accountFilter === "all") return;
+    setRefreshing(true);
+    try {
+      await apiMutate("/instagram/refresh", {
+        body: { username: accountFilter, days: 14 },
+      });
+      await mutate("/instagram/feed");
+    } catch (err) {
+      console.error("Refresh failed:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [accountFilter, mutate, refreshing]);
 
   return (
     <div className="space-y-6">
@@ -259,6 +360,14 @@ export function AgenticHubTab() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
+          <GlowButton
+            variant="secondary"
+            className="py-1.5 px-4 text-[10px]"
+            onClick={handleRefresh}
+            disabled={refreshing || accountFilter === "all"}
+          >
+            {refreshing ? "REFRESHING..." : "REFRESH FEED"}
+          </GlowButton>
           <div className="flex bg-bg-surface p-1 border border-outline-variant/30">
             <button
               onClick={() => setAccountFilter("all")}
