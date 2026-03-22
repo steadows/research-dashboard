@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { GlowButton } from "@/components/ui/glow-button";
@@ -133,6 +134,7 @@ function ResearchFeed() {
 function ToolRadarItem({ tool }: { tool: ToolItem }) {
   const [hovered, setHovered] = useState(false);
   const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const reduceMotion = useReducedMotion();
 
   const dotColor =
     tool.status === "offline"
@@ -167,56 +169,96 @@ function ToolRadarItem({ tool }: { tool: ToolItem }) {
   }, [tool, wbStatus]);
 
   return (
-    <div
-      className={`group cursor-pointer p-2 transition-all duration-200 ${
-        hovered ? "bg-accent-cyan/10 ring-1 ring-accent-cyan/20" : "hover:bg-accent-cyan/5"
-      }`}
+    <m.div
+      className="group cursor-pointer p-2"
+      animate={{
+        backgroundColor: hovered ? "rgba(0, 240, 255, 0.08)" : "rgba(0, 240, 255, 0)",
+      }}
+      transition={{ duration: 0.15 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Collapsed row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <m.div
+            className={`h-1.5 w-1.5 rounded-full ${dotColor}`}
+            animate={{ scale: hovered ? 1.6 : 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+          />
           <span className="font-mono text-sm text-white">
             {tool.name.toUpperCase().replace(/\s+/g, "_")}
           </span>
         </div>
         {tool.category && (
-          <span className="text-[9px] font-headline border border-outline-variant px-1.5 text-outline group-hover:text-accent-cyan group-hover:border-accent-cyan transition-colors">
+          <m.span
+            className="text-[9px] font-headline border px-1.5"
+            animate={{
+              color: hovered ? "#00F0FF" : "#6B7280",
+              borderColor: hovered ? "#00F0FF" : "#374151",
+            }}
+            transition={{ duration: 0.15 }}
+          >
             {tool.category.toUpperCase()}
-          </span>
+          </m.span>
         )}
       </div>
 
-      {/* Hover-reveal detail panel */}
-      <div
-        className={`overflow-hidden transition-all duration-200 ${
-          hovered ? "max-h-40 opacity-100 mt-2" : "max-h-0 opacity-0"
-        }`}
-      >
-        {tool.notes && (
-          <p className="font-mono text-[10px] text-text-secondary leading-relaxed mb-2 pl-[18px]">
-            {tool.notes}
-          </p>
-        )}
-        {tool.source && (
-          <p className="font-mono text-[9px] text-accent-cyan/50 mb-2 pl-[18px]">
-            via {tool.source}
-          </p>
-        )}
-        <div className="pl-[18px]">
-          <GlowButton
-            variant="secondary"
-            className="py-1 px-3 text-[9px]"
-            onClick={handleWorkbench}
-            disabled={wbStatus !== "idle"}
+      {/* Animated hover-reveal drawer */}
+      <AnimatePresence>
+        {hovered && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { height: { type: "spring", stiffness: 500, damping: 30 }, opacity: { duration: 0.2 } }
+            }
+            className="overflow-hidden"
           >
-            {wbStatus === "sent" ? "SENT" : wbStatus === "sending" ? "..." : "DEEP DIVE"}
-          </GlowButton>
-        </div>
-      </div>
-    </div>
+            <div className="pt-2 space-y-2">
+              {tool.notes && (
+                <m.p
+                  initial={{ x: -8 }}
+                  animate={{ x: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.05 }}
+                  className="font-mono text-[10px] text-text-secondary leading-relaxed pl-[18px]"
+                >
+                  {tool.notes}
+                </m.p>
+              )}
+              {tool.source && (
+                <m.p
+                  initial={{ x: -8 }}
+                  animate={{ x: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.08 }}
+                  className="font-mono text-[9px] text-accent-cyan/50 pl-[18px]"
+                >
+                  via {tool.source}
+                </m.p>
+              )}
+              <m.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.1 }}
+                className="pl-[18px] pt-1"
+              >
+                <GlowButton
+                  variant="secondary"
+                  className="py-1 px-3 text-[9px]"
+                  onClick={handleWorkbench}
+                  disabled={wbStatus !== "idle"}
+                >
+                  {wbStatus === "sent" ? "SENT" : wbStatus === "sending" ? "..." : "DEEP DIVE"}
+                </GlowButton>
+              </m.div>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </m.div>
   );
 }
 
