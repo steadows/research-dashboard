@@ -2,8 +2,6 @@
 
 import { useState, useCallback } from "react";
 import {
-  LazyMotion,
-  domAnimation,
   m,
   AnimatePresence,
   useReducedMotion,
@@ -63,8 +61,7 @@ export function WorkbenchCard({
         : "border-accent-green";
 
   return (
-    <LazyMotion features={domAnimation}>
-      <m.article
+    <m.article
         layoutId={entry.key}
         layout
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -100,8 +97,8 @@ export function WorkbenchCard({
                 </span>
               )}
               {entry.status === "researching" && (
-                <div className="flex items-center gap-1.5">
-                  <div className="h-1.5 w-1.5 animate-ping rounded-full bg-accent-cyan" />
+                <div className="flex items-center gap-1.5" role="status" aria-label="Research in progress">
+                  <div className="h-1.5 w-1.5 animate-ping rounded-full bg-accent-cyan" aria-hidden="true" />
                   <span className="text-[9px] font-bold uppercase tracking-widest text-accent-cyan">
                     ACTIVE_SCAN
                   </span>
@@ -125,7 +122,7 @@ export function WorkbenchCard({
 
           {/* Brief preview — always visible */}
           {entry.notes && !expanded && (
-            <p className="mt-2 text-xs leading-relaxed text-text-secondary/60 line-clamp-2">
+            <p className="mt-2 text-xs leading-relaxed text-text-secondary/70 line-clamp-2">
               {entry.notes}
             </p>
           )}
@@ -228,7 +225,6 @@ export function WorkbenchCard({
           )}
         </AnimatePresence>
       </m.article>
-    </LazyMotion>
   );
 }
 
@@ -419,7 +415,7 @@ function StatusActions({
             className={`py-1.5 border font-heading text-[10px] font-bold uppercase transition-colors ${
               entry.vault_note
                 ? "border-accent-green text-accent-green hover:text-white"
-                : "border-outline-variant text-text-secondary/60 hover:text-white"
+                : "border-outline-variant text-text-secondary/70 hover:text-white"
             }`}
             aria-label={`Open ${entry.name} in Obsidian`}
             onClick={() => onPublishVault?.(entry.key)}

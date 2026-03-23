@@ -87,7 +87,7 @@ export function TabBar({ activeTab, onTabChange }: TabBarProps) {
                 "shrink-0 px-4 py-3 font-headline text-[11px] uppercase tracking-[0.15em] transition-colors",
                 isActive
                   ? "text-accent-cyan"
-                  : "text-text-secondary/60 hover:text-accent-cyan/80"
+                  : "text-text-secondary/70 hover:text-accent-cyan/80"
               )}
             >
               {label}

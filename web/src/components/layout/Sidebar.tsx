@@ -69,7 +69,7 @@ export function Sidebar() {
                   "flex w-full flex-col items-center gap-1 py-2 transition-all duration-75",
                   isActive
                     ? "border-l-2 border-accent-cyan bg-accent-cyan/10 text-accent-cyan"
-                    : "text-slate-500 hover:text-accent-cyan"
+                    : "text-outline/50 hover:text-accent-cyan"
                 )}
               >
                 {icon}
@@ -80,8 +80,32 @@ export function Sidebar() {
         </nav>
       </aside>
 
-      {/* Mobile bottom nav — sidebar items are secondary, shown as trailing icons */}
-      {/* Primary mobile nav (page routes) is handled by Header's mobile menu */}
+      {/* Mobile bottom nav */}
+      <nav
+        className="fixed bottom-0 left-0 z-40 flex w-full items-center justify-around border-t border-accent-cyan/20 bg-bg-surface/95 py-2 backdrop-blur-xl md:hidden"
+        aria-label="Utility navigation (mobile)"
+      >
+        {SIDEBAR_ITEMS.map(({ href, icon, label }) => {
+          const isActive = pathname === href;
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-label={label}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "flex flex-col items-center gap-0.5 px-3 py-1 transition-colors duration-75",
+                isActive
+                  ? "text-accent-cyan"
+                  : "text-outline/50 hover:text-accent-cyan"
+              )}
+            >
+              {icon}
+              <span className="font-mono text-[8px] uppercase">{label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
@@ -49,8 +50,10 @@ export default function RootLayout({
           <Header />
           <div className="flex min-h-screen pt-16">
             <Sidebar />
-            <main className="flex-1 ml-0 md:ml-20 p-6 overflow-x-hidden relative z-10">
-              {children}
+            <main className="flex-1 ml-0 md:ml-20 p-6 overflow-x-hidden relative z-10" aria-label="Page content">
+              <Suspense fallback={null}>
+                {children}
+              </Suspense>
             </main>
           </div>
         </MotionProvider>

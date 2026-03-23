@@ -273,10 +273,15 @@ def publish_to_vault(
                 rel = _ig_note_relative_path(ig_source_note, vault)
                 source_note_link = f"[[{rel}]]"
 
-    # Build and write vault note
+    # Build and write vault note — sanitize name to prevent path traversal
+    safe_name = Path(name).name  # strip any directory components
+    if not safe_name or safe_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid item name")
     vault_dir = vault / "Research" / "Workbench"
     vault_dir.mkdir(parents=True, exist_ok=True)
-    note_path = vault_dir / f"{name}.md"
+    note_path = (vault_dir / f"{safe_name}.md").resolve()
+    if not note_path.is_relative_to(vault_dir.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid item name")
 
     note_content = _build_vault_note(
         name,
@@ -289,7 +294,7 @@ def publish_to_vault(
 
     # Add forward link from IG post to this research note
     if ig_source_note and ig_source_note.is_file():
-        research_link = f"[[Research/Workbench/{name}|Research Report]]"
+        research_link = f"[[Research/Workbench/{safe_name}|Research Report]]"
         ig_content = ig_source_note.read_text(encoding="utf-8")
         if research_link not in ig_content:
             ig_content += f"\n\n## Research\n{research_link}\n"
@@ -297,7 +302,7 @@ def publish_to_vault(
             logger.info("Added research link to IG note: %s", ig_source_note)
 
     # Relative path within vault for obsidian:// URI
-    relative_path = f"Research/Workbench/{name}"
+    relative_path = f"Research/Workbench/{safe_name}"
 
     # Update workbench entry
     update_workbench_item(key, {"vault_note": str(note_path)})
@@ -307,7 +312,7 @@ def publish_to_vault(
     obsidian_uri = f"obsidian://open?vault={vault_name}&file={relative_path}"
 
     logger.info("Published vault note: %s (projects: %s)", note_path, projects)
-    return {"vault_note": str(note_path), "obsidian_uri": obsidian_uri}
+    return {"vault_note": relative_path, "obsidian_uri": obsidian_uri}
 
 
 # ── Reports listing ──────────────────────────────────────────────
@@ -445,7 +450,7 @@ def get_report_content(slug: str) -> dict[str, str]:
         HTTPException: 404 if report not found.
     """
     report_dir = (_WORKBENCH_ROOT / slug).resolve()
-    if not str(report_dir).startswith(str(_WORKBENCH_ROOT.resolve())):
+    if not report_dir.is_relative_to(_WORKBENCH_ROOT.resolve()):
         raise HTTPException(status_code=400, detail="Invalid slug")
     md_path = report_dir / "research.md"
 

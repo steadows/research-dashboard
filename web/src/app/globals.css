@@ -63,7 +63,7 @@
   --color-outline-variant: #3B494B;
   --color-text-primary: #E4E1E9;
   --color-text-secondary: #B9CACB;
-  --color-text-muted: #555555;
+  --color-text-muted: #7A7A7A;
 
   /* Radii — 0px everywhere (sharp = precision) */
   --radius-sm: 0px;
@@ -352,6 +352,17 @@
   .glitch-layer {
     display: none;
   }
+}
+
+/* ─── Focus Visible — keyboard-only focus ring ─── */
+:focus-visible {
+  outline: 2px solid var(--color-accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Remove default outline for mouse/touch users */
+:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* ─── Custom Cursor ─── */

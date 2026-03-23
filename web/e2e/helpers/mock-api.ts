@@ -122,7 +122,7 @@ const MOCK_TOOLS = [
   },
 ];
 
-/** Mock reports */
+/** Mock reports (dashboard tab) */
 const MOCK_REPORTS = [
   {
     title: "Week 12 JournalClub",
@@ -130,6 +130,61 @@ const MOCK_REPORTS = [
     source: "JournalClub",
     type: "journalclub",
     highlights: ["New transformer architecture"],
+  },
+];
+
+/** Mock research reports (reports page) */
+const MOCK_RESEARCH_REPORTS = [
+  {
+    slug: "tool--tf-idf-vectorizer",
+    title: "TF-IDF Vectorizer Research",
+    source_type: "tool",
+    researched: "2026-03-20",
+    excerpt: "Text vectorization utility for NLP pipelines.",
+    has_html: true,
+  },
+  {
+    slug: "method--attention-mechanism",
+    title: "Attention Mechanism Deep Dive",
+    source_type: "method",
+    researched: "2026-03-19",
+    excerpt: "Transformer attention patterns and implementations.",
+    has_html: false,
+  },
+];
+
+/** Mock report content */
+const MOCK_REPORT_CONTENT = {
+  slug: "tool--tf-idf-vectorizer",
+  content:
+    "# TF-IDF Vectorizer Research\n\n## Summary\n\nText frequency analysis tool for NLP.\n\n## Key Findings\n\n- Fast tokenization\n- Sparse matrix output",
+};
+
+/** Mock archived items */
+const MOCK_ARCHIVE = [
+  {
+    key: "tool::Deprecated-Lib",
+    type: "tool",
+    name: "Deprecated Lib",
+    status: "dismissed",
+    notes: "No longer maintained.",
+    category: "utility",
+    source: "TLDR",
+  },
+  {
+    key: "method::Old-Approach",
+    type: "method",
+    name: "Old Approach",
+    status: "dismissed",
+    notes: "Superseded by newer technique.",
+    source: "JournalClub",
+  },
+  {
+    key: "instagram::ig-stale",
+    type: "instagram",
+    name: "Stale IG Post",
+    status: "dismissed",
+    notes: "Outdated content.",
   },
 ];
 
@@ -235,6 +290,25 @@ export async function mockAllApiRoutes(page: Page): Promise<void> {
     route.fulfill({ json: { success: true, count: 5 } })
   );
 
+  await page.route("**/api/research/reports/*/content", (route) =>
+    route.fulfill({ json: MOCK_REPORT_CONTENT })
+  );
+
+  await page.route("**/api/research/reports", (route) =>
+    route.fulfill({ json: MOCK_RESEARCH_REPORTS })
+  );
+
+  await page.route("**/api/status/archive/**", (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({ json: { success: true } });
+    }
+    return route.fulfill({ json: {}, status: 200 });
+  });
+
+  await page.route("**/api/status/archive", (route) =>
+    route.fulfill({ json: MOCK_ARCHIVE })
+  );
+
   await page.route("**/api/analyze/**", (route) =>
     route.fulfill({ json: MOCK_ANALYSIS })
   );
@@ -262,6 +336,9 @@ export {
   MOCK_BLOG_QUEUE,
   MOCK_TOOLS,
   MOCK_REPORTS,
+  MOCK_RESEARCH_REPORTS,
+  MOCK_REPORT_CONTENT,
+  MOCK_ARCHIVE,
   MOCK_GRAPH_HEALTH,
   MOCK_INSTAGRAM,
   MOCK_ANALYSIS,

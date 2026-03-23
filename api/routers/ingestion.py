@@ -40,5 +40,5 @@ def refresh_instagram(
 
     return {
         "notes_written": len(notes),
-        "note_paths": [str(p) for p in notes],
+        "note_paths": [p.name for p in notes],
     }

@@ -10,7 +10,7 @@ export function Header() {
   const pathname = usePathname();
 
   return (
-    <header className="fixed top-0 z-50 flex h-16 w-full items-center justify-between border-b border-accent-cyan/20 bg-bg-base/95 px-6 backdrop-blur-sm shadow-[0_0_15px_rgba(0,240,255,0.1)]">
+    <header className="fixed top-0 z-50 flex h-16 w-full items-center justify-between border-b border-accent-cyan/20 bg-bg-base/95 px-6 backdrop-blur-sm box-glow-cyan" role="banner">
       <div className="flex items-center gap-8">
         <GlitchText
           as="span"

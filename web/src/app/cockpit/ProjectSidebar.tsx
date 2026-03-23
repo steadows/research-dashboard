@@ -39,11 +39,11 @@ export function ProjectSidebar({
   }, [projects, search]);
 
   return (
-    <aside className="flex h-full w-72 flex-col border-r border-outline-variant/15 bg-bg-surface/80">
+    <aside className="flex h-full w-72 flex-col border-r border-outline-variant/15 bg-bg-surface/80" aria-label="Project selector">
       {/* Header */}
       <div className="px-4 pb-3 pt-4">
         <div className="mb-1 flex items-center gap-3">
-          <div className="h-2 w-2 animate-pulse bg-accent-cyan" />
+          <div className="h-2 w-2 animate-pulse bg-accent-cyan" aria-hidden="true" />
           <span className="font-heading text-xs font-bold uppercase tracking-widest text-cyan-fixed">
             PROJECTS
           </span>
@@ -81,7 +81,7 @@ export function ProjectSidebar({
       </div>
 
       {/* Project list */}
-      <div className="flex-1 space-y-1 overflow-y-auto">
+      <div className="flex-1 space-y-1 overflow-y-auto" role="listbox" aria-label="Projects">
         {isLoading && (
           <div className="px-4 py-8 text-center">
             <div className="inline-block h-4 w-4 animate-pulse bg-accent-cyan/30" />
@@ -102,6 +102,8 @@ export function ProjectSidebar({
           return (
             <button
               key={project.name}
+              role="option"
+              aria-selected={isActive}
               onClick={() => onSelectProject(project.name)}
               className={cn(
                 "mx-2 flex w-[calc(100%-1rem)] cursor-pointer items-center justify-between p-3 text-left transition-all duration-75",

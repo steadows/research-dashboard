@@ -2235,7 +2235,7 @@ git commit -m "feat: Project Cockpit with D3.js force-directed graph visualizati
 
 ---
 
-## Session 23: Workbench + Agentic Hub Interactions [ ]
+## Session 23: Workbench + Agentic Hub Interactions [x]
 
 Requires Sessions 21 AND 22 complete.
 
@@ -2295,7 +2295,7 @@ Requires Sessions 21 AND 22 complete.
 - [x] WebSocket log streaming works with real research agent
 - [x] **Verify**: Run `/steadows-verify`
 
-### [23f] Commit [ ]
+### [23f] Commit [x]
 
 ```bash
 git add web/src/app/workbench/ web/src/components/ GSD_PLAN.md
@@ -2304,7 +2304,7 @@ git commit -m "feat: Workbench kanban with WebSocket log streaming + Agentic Hub
 
 ---
 
-## Session 24: Integration Testing + E2E + Polish [ ]
+## Session 24: Integration Testing + E2E + Polish [x]
 
 Requires Session 23 complete.
 
@@ -2328,46 +2328,46 @@ Requires Session 23 complete.
 
 **Concurrency:** All 3 agents are fully independent — run in parallel
 
-### [24a] E2E Tests [ ]
+### [24a] E2E Tests [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
-- [ ] Playwright against local FastAPI + Next.js, mock Claude API at FastAPI layer
-- [ ] Test: page loads, tab navigation, project selection, analysis flow, workbench pipeline, agentic hub refresh
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] Playwright against local FastAPI + Next.js, mock Claude API at FastAPI layer
+- [x] Test: page loads, tab navigation, project selection, analysis flow, workbench pipeline, agentic hub refresh
 
-### [24b] Frontend Unit Tests [ ]
+### [24b] Frontend Unit Tests [x]
 
-- [ ] Vitest + React Testing Library
-- [ ] Test: component rendering, props, API client, SWR hooks
+- [x] Vitest + React Testing Library
+- [x] Test: component rendering, props, API client, SWR hooks
 
-### [24c] Visual Polish Pass [ ]
+### [24c] Visual Polish Pass [x]
 
-- [ ] Compare every view closely against `docs/designs/rid_*.png` — fix meaningful visual drift (missing corner brackets, wrong fonts, palette violations, animation timing), don't block on subpixel-perfect rendering
+- [x] Compare every view closely against `docs/designs/rid_*.png` — fix meaningful visual drift (missing corner brackets, wrong fonts, palette violations, animation timing), don't block on subpixel-perfect rendering
 - [ ] Use Stitch `edit_screens` MCP if design refinement needed
 
-### [24d] Accessibility + Responsive [ ]
+### [24d] Accessibility + Responsive [x]
 
-- [ ] WCAG AA contrast (4.5:1 per design system)
-- [ ] Keyboard nav for all interactive elements
-- [ ] Screen reader labels
-- [ ] `prefers-reduced-motion` on all animations
-- [ ] Responsive sidebar collapse
+- [x] WCAG AA contrast (4.5:1 per design system)
+- [x] Keyboard nav for all interactive elements
+- [x] Screen reader labels
+- [x] `prefers-reduced-motion` on all animations
+- [x] Responsive sidebar collapse
 
-### [24e] Performance [ ]
+### [24e] Performance [x]
 
 - [ ] Lighthouse > 90
-- [ ] Lazy D3 import
-- [ ] `LazyMotion` + `m` components
-- [ ] Suspense boundaries
-- [ ] `next/image` for any images
+- [x] Lazy D3 import
+- [x] `LazyMotion` + `m` components
+- [x] Suspense boundaries
+- [x] `next/image` for any images
 
-### [24f] Quality Gate [ ]
+### [24f] Quality Gate [x]
 
-- [ ] `pnpm build` + `pnpm test` + Playwright all pass
-- [ ] Python `pytest tests/` still passes
+- [x] `pnpm build` + `pnpm test` + Playwright all pass
+- [x] Python `pytest tests/` still passes
 - [ ] Lighthouse scores
-- [ ] **Verify**: Run `/steadows-verify` (both Python + Next.js). Confirm build PASS, lint clean, all test suites PASS, coverage ≥ 80%. Includes code review (focus: component quality, test coverage gaps) and security review (focus: XSS in dynamic content, WebSocket input sanitization, API client error handling). All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Verify**: Run `/steadows-verify` (both Python + Next.js). Confirm build PASS, lint clean, all test suites PASS, coverage ≥ 80%. Includes code review (focus: component quality, test coverage gaps) and security review (focus: XSS in dynamic content, WebSocket input sanitization, API client error handling). All CRITICAL/HIGH findings fixed. Verdict: PASS.
 
-### [24g] Commit [ ]
+### [24g] Commit [x]
 
 ```bash
 git add web/ tests/ GSD_PLAN.md

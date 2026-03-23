@@ -460,10 +460,10 @@ def create_blog_draft(body: BlogDraftRequest) -> dict[str, str]:
     except FileExistsError as exc:
         raise HTTPException(
             status_code=409,
-            detail=f"Draft already exists: {exc}",
+            detail="Draft already exists for this item.",
         ) from exc
 
-    return {"draft": draft, "draft_path": str(path)}
+    return {"draft": draft, "draft_path": path.name}
 
 
 @router.post("/blog-queue/summarize")

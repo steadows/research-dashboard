@@ -42,7 +42,10 @@ def get_vault_path_str() -> str:
     try:
         return str(get_vault_path())
     except ValueError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="OBSIDIAN_VAULT_PATH is not configured or does not exist.",
+        ) from exc
 
 
 def get_api_key() -> str:

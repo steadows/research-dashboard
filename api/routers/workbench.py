@@ -45,8 +45,8 @@ def _flatten_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "previous_status": entry.get("previous_status"),
         "added_at": entry.get("added"),
         "verdict": entry.get("experiment_type"),
-        "pid": entry.get("pid"),
-        "log_file": entry.get("log_file"),
+        "pid": bool(entry.get("pid")),
+        "log_file": bool(entry.get("log_file")),
         # Rich metadata from nested item
         "category": nested.get("category", ""),
         "source": nested.get("source", ""),
