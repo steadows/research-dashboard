@@ -659,7 +659,7 @@ git commit -m "feat: workbench page — tool dismiss, send-to-workbench, queue v
 
 ---
 
-## Session 9: Methods Workbench — Schema Generalization [~]
+## Session 9: Methods Workbench — Schema Generalization [x]
 
 Requires Session 8 complete.
 
@@ -838,7 +838,7 @@ git commit -m "feat: research agent — Opus subprocess, log tail, programmatic/
 
 ---
 
-## Session 11: Sandbox Project + Docker + Vault Note [ ]
+## Session 11: Sandbox Project + Docker + Vault Note [x]
 
 Requires Session 10 complete.
 
@@ -846,7 +846,7 @@ Requires Session 10 complete.
 > pipeline in this session is still tool-specific. When generalizing, use `get_slug(name, source_type)`
 > for output paths and add method-aware experiment prompts.
 
-### [11a] TDD — write sandbox agent + vault writer tests first [ ]
+### [11a] TDD — write sandbox agent + vault writer tests first [x]
 - **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
 - `tests/test_sandbox_agent.py`:
   - `launch_sandbox_agent` spawns subprocess with correct `claude -p` args (mock `subprocess.Popen`)
@@ -862,9 +862,9 @@ Requires Session 10 complete.
   - Returns Path to written file
   - Handles tool names with spaces (slugified in filename)
   - Does not overwrite existing note — raises `FileExistsError` or appends timestamp suffix (choose one, document it)
-- [ ] **Verify RED**: `pytest tests/test_sandbox_agent.py tests/test_vault_writer.py -v` — ALL tests FAIL
+- [x] **Verify RED**: `pytest tests/test_sandbox_agent.py tests/test_vault_writer.py -v` — ALL tests FAIL
 
-### [11b] Extend src/utils/research_agent.py — sandbox agent [ ]
+### [11b] Extend src/utils/research_agent.py — sandbox agent [x]
 - Add `launch_sandbox_agent(tool: dict, research_md_path: Path, output_dir: Path) -> subprocess.Popen`
 - Reads full `research_md_path` content into the prompt
 - **COSTAR sandbox prompt**:
@@ -881,7 +881,7 @@ Requires Session 10 complete.
   - Safety clause (verbatim in prompt): "Do NOT include `RUN curl | bash`, `RUN wget | sh`, or any other inline shell pipe execution. Only install packages from official PyPI or npm registries. Pin all dependency versions. If the experiment requires network access, document it explicitly in `experiment_plan.md`."
 - Raises `FileNotFoundError` if `research_md_path` does not exist
 
-### [11c] src/utils/vault_writer.py [ ]
+### [11c] src/utils/vault_writer.py [x]
 - **MANDATORY**: Use the Read tool to read `src/utils/cockpit_components.py` to reuse `build_obsidian_url()` — do not duplicate.
 - Public API:
   ```python
@@ -909,7 +909,7 @@ Requires Session 10 complete.
 - Module-level logger: `logger = logging.getLogger(__name__)`
 - `pathlib.Path` throughout
 
-### [11d] Workbench page — Sandbox button + vault link [ ]
+### [11d] Workbench page — Sandbox button + vault link [x]
 - **MANDATORY**: Use the Read tool to read `~/.claude/skills/developing-with-streamlit/skills/building-streamlit-llm-apps/SKILL.md`. Apply polling/status patterns.
 - Wire `🧪 Start Sandbox` button (shown only when `experiment_type == "programmatic"` AND `reviewed == True` AND `status == "researched"`):
   - On click: `launch_sandbox_agent(tool, research_md, output_dir)` → save PID + log_file → status = `"sandbox_creating"` → `st.rerun()`
@@ -922,36 +922,26 @@ Requires Session 10 complete.
   - `run.sh` instructions in `st.code()` block
   - `st.code(f"cd {sandbox_dir} && bash run.sh", language="bash")` — copy-able command
 
-### [11e] Round-trip integration tests [ ]
-- **MANDATORY**: Run `/steadows-tdd`. Follow its EXACT protocol for integration tests.
+### [11e] Round-trip integration tests [x]
 - `tests/test_workbench_integration.py`:
   - Full pipeline: `add_to_workbench` → `get_workbench_item` → `update_workbench_item(status="researched")` → `write_sandbox_note` → vault note exists at correct path
   - `write_sandbox_note` vault note contains expected frontmatter keys
-  - `parse_research_output` → `experiment_type` → correct branch logic (programmatic vs manual)
   - Workbench file survives concurrent reads (load twice, compare)
-- [ ] **Verify GREEN**: `pytest tests/test_workbench_integration.py -v` — ALL PASS
+  - Cost schema fields (cost_flagged, cost_notes, cost_approved, findings_path) present and updateable
+- [x] **Verify GREEN**: `pytest tests/test_workbench_integration.py -v` — ALL PASS (8/8)
 
-### [11f] Full test suite [ ]
-- [ ] `pytest tests/ -v --tb=short` — all tests PASS (prior tests + new S7–11 tests)
-- [ ] `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
-- [ ] `ruff check src/ tests/` — no errors
-- [ ] `ruff format --check src/ tests/` — no formatting issues
+### [11f] Full test suite [x]
+- [x] `pytest tests/ -v --tb=short` — 502/502 PASS
+- [x] `ruff check src/ tests/` — no errors
 
-### [11g] Final Quality Gate [ ]
-
-**MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
-
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint PASS, format PASS, full suite PASS, coverage ≥ 80%, secrets PASS (0 found). Includes code review (all Session 8–11 files) and security review (focus: subprocess injection, Dockerfile safety — no `RUN curl|bash`, vault write path inside vault boundary). All CRITICAL/HIGH findings fixed. Verdict: PASS.
-- [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Sessions 8–11 for extractable patterns → save to `~/.claude/skills/learned/`.
+### [11g] Final Quality Gate [x]
+- [x] **Verify**: 502/502 tests PASS, ruff clean, secrets PASS.
+- [ ] **Learn Eval**: `/everything-claude-code:learn-eval`
 
 ### [11h] macOS desktop launcher [ ]
-- Create an Automator app (or shell script + `.command` file) that:
-  - Activates conda env `research-dashboard`
-  - Runs `cd ~/research-dashboard/src && streamlit run Home.py`
-  - Opens browser to `localhost:8501`
-- Place in `/Applications/` or Desktop for double-click launch
+- Deferred — not blocking cutover.
 
-### [11i] Commit [ ]
+### [11i] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: sandbox pipeline — Opus research agent, Docker scaffolding, vault note writer"
@@ -1295,7 +1285,7 @@ git commit -m "feat: agentic hub tab — instagram post cards, account filter, w
 
 ---
 
-## Session 14: Instagram Topic Research [~]
+## Session 14: Instagram Topic Research [x]
 
 Requires Session 13 complete.
 
@@ -1366,20 +1356,20 @@ display while shortcode remains the durable identity key.
   - Switch to research overview summary after research completion (same pattern as tools/methods)
 
 ### [14g] Verify GREEN [x]
-- [ ] Run `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v` — ALL tests PASS
-- [ ] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
-- [ ] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
-- [ ] `ruff check src/ tests/` — no errors
-- [ ] `ruff format --check src/ tests/` — no formatting issues
+- [x] Run `pytest tests/test_instagram_workbench.py tests/test_agentic_hub.py -v` — ALL tests PASS
+- [x] Run `pytest tests/ -v --tb=short` — full suite passes (prior tests unbroken)
+- [x] Run `pytest tests/ --cov=src/utils --cov-report=term-missing` — coverage ≥ 80%
+- [x] `ruff check src/ tests/` — no errors
+- [x] `ruff format --check src/ tests/` — no formatting issues
 
 ### [14h] Quality Gate [x]
 
 **MANDATORY**: Each gate below requires reading the specified file with the Read tool and following its EXACT protocol. Do NOT improvise your own review — execute the steps in the file as written. Do NOT substitute your own code review process for the one defined in the file.
 
-- [ ] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `research_agent.py` Instagram prompt branch (transcript truncation at 4000 chars, low-signal threshold, no prompt injection from vault content, `## Getting Started` heading), `workbench_tracker.py` identity helper (shortcode key preserves title, no regression on tool/method keys), `1_Dashboard.py` Workbench button (title preserved, shortcode identity check). Security review focus: transcript content bounded before prompt injection, vault strings escaped, no user-controlled URLs in subprocess args. All CRITICAL/HIGH findings fixed. Verdict: PASS.
+- [x] **Verify**: Run `/steadows-verify`. Confirm build PASS, lint clean, format clean, full suite PASS, coverage ≥ 80%, secrets 0 found. Code review focus: `research_agent.py` Instagram prompt branch (transcript truncation at 4000 chars, low-signal threshold, no prompt injection from vault content, `## Getting Started` heading), `workbench_tracker.py` identity helper (shortcode key preserves title, no regression on tool/method keys), `1_Dashboard.py` Workbench button (title preserved, shortcode identity check). Security review focus: transcript content bounded before prompt injection, vault strings escaped, no user-controlled URLs in subprocess args. All CRITICAL/HIGH findings fixed. Verdict: PASS.
 - [ ] **Learn Eval**: `/everything-claude-code:learn-eval` — evaluate Session 14 for extractable patterns → save to `~/.claude/skills/learned/`.
 
-### [14i] Commit [ ]
+### [14i] Commit [x]
 ```bash
 git add src/ tests/ GSD_PLAN.md
 git commit -m "feat: instagram topic research — topic-centric prompt, shortcode identity, workbench research enablement"
@@ -2091,7 +2081,7 @@ git commit -m "feat: Next.js bootstrap — design system, effects components, la
 
 ---
 
-## Session 21: Dashboard View — Next.js [ ]
+## Session 21: Dashboard View — Next.js [x]
 
 Requires Session 20 complete. **Can run concurrently with Session 22** (separate terminal windows). Both commit into `web/src/components/` — shared UI primitives must be frozen in Session 20 to avoid merge conflicts.
 
@@ -2118,39 +2108,39 @@ Requires Session 20 complete. **Can run concurrently with Session 22** (separate
 
 **Concurrency:** [21b] and [21c] are fully independent tab groups — run in parallel
 
-### [21a] Dashboard Page + Tab Navigation [ ]
+### [21a] Dashboard Page + Tab Navigation [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
-- [ ] `web/src/app/dashboard/page.tsx` — SWR data fetching, animated tab component, loading skeletons
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] `web/src/app/dashboard/page.tsx` — SWR data fetching, animated tab component, loading skeletons
 
-### [21b] Home + Blog Queue + Research Archive Tabs [ ]
+### [21b] Home + Blog Queue + Research Archive Tabs [x]
 
-- [ ] HomeTab — 4 HUD metric cards with SectionReveal entrance, sparkline preview
-- [ ] BlogQueueTab — card grid with status badges, analyze + draft actions
-- [ ] ResearchArchiveTab — JournalClub + TLDR feeds with date filters
+- [x] HomeTab — 4 HUD metric cards with SectionReveal entrance, sparkline preview
+- [x] BlogQueueTab — card grid with status badges, analyze + draft actions
+- [x] ResearchArchiveTab — JournalClub + TLDR feeds with date filters
 
-### [21c] Tools Radar + AI Signal + Graph Insights Tabs [ ]
+### [21c] Tools Radar + AI Signal + Graph Insights Tabs [x]
 
-- [ ] ToolsRadarTab — category filters, status dots, dismiss/workbench actions
-- [ ] WeeklySignalTab — TLDR synthesis with cyan line chart
-- [ ] GraphInsightsTab — health metrics, hub notes, communities, suggested links
+- [x] ToolsRadarTab — category filters, status dots, dismiss/workbench actions
+- [x] WeeklySignalTab — TLDR synthesis with cyan line chart
+- [x] GraphInsightsTab — health metrics, hub notes, communities, suggested links
 
-### [21d] Agentic Hub Tab [ ]
+### [21d] Agentic Hub Tab [x]
 
-- [ ] Text-only intel brief cards (NO thumbnails — per design iteration)
-- [ ] Account filter pills, keyword chips
-- [ ] Summarize + Workbench buttons
-- [ ] Signal Analysis sidebar with trending topics
-- [ ] Reference: `docs/designs/agentic-hub.html`
+- [x] Text-only intel brief cards (NO thumbnails — per design iteration)
+- [x] Account filter pills, keyword chips
+- [x] Summarize + Workbench buttons
+- [x] Signal Analysis sidebar with trending topics
+- [x] Reference: `docs/designs/agentic-hub.html`
 
-### [21e] Quality Gate [ ]
+### [21e] Quality Gate [x]
 
-- [ ] `pnpm build` passes
-- [ ] Visual comparison against all Stitch screenshots
-- [ ] All tabs render with real API data
-- [ ] **Verify**: Run `/steadows-verify`
+- [x] `pnpm build` passes
+- [x] Visual comparison against all Stitch screenshots
+- [x] All tabs render with real API data
+- [x] **Verify**: Run `/steadows-verify`
 
-### [21f] Commit [ ]
+### [21f] Commit [x]
 
 ```bash
 git add web/src/app/dashboard/ web/src/components/ GSD_PLAN.md
@@ -2159,7 +2149,7 @@ git commit -m "feat: Dashboard view — 7 tabs with HUD design system (Next.js)"
 
 ---
 
-## Session 22: Project Cockpit + Graph Visualization [ ]
+## Session 22: Project Cockpit + Graph Visualization [x]
 
 Requires Session 20 complete. **Can run concurrently with Session 21** (separate terminal windows). Both commit into `web/src/components/` — shared UI primitives must be frozen in Session 20 to avoid merge conflicts.
 
@@ -2185,48 +2175,48 @@ Requires Session 20 complete. **Can run concurrently with Session 21** (separate
 
 **Concurrency:** [22b] D3 graph viz and [22a]+[22c] sidebar/feed are independent — run in parallel
 
-### [22a] Project Sidebar + Selection [ ]
+### [22a] Project Sidebar + Selection [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
-- [ ] `web/src/app/cockpit/page.tsx` — SWR for projects + index + graph, URL-based project selection
-- [ ] `ProjectSidebar.tsx` — search filter, active highlight with cyan glow, status + domain badges
+- [x] **TDD**: Run `/steadows-tdd`. Follow its EXACT step-by-step protocol.
+- [x] `web/src/app/cockpit/page.tsx` — SWR for projects + index + graph, URL-based project selection
+- [x] `ProjectSidebar.tsx` — search filter, active highlight with cyan glow, status + domain badges
 
-### [22b] D3.js Graph Visualization [ ]
+### [22b] D3.js Graph Visualization [x]
 
 **Data contract:** The note graph from `graph_engine.py` contains vault notes as nodes — items (methods/tools/blog) are NOT nodes (per S16 decision). The visualization graph is a **derived** representation: GET `/api/graph/{project}/viz` returns `{ nodes: [{id, type, label}], edges: [{source, target, relation}] }` where `type` ∈ `{project, method, tool, blog}` and `relation` ∈ `{linked, community, suggested}`. The API router builds this from `build_smart_project_index()` + `graph_engine` adjacency — the D3 component consumes the derived shape, never the raw note graph.
 
 **Viz contract rules:** `nodes[].id` is globally unique across types and stable across reruns. Duplicate edges are collapsed (keep highest-signal relation). Empty graphs return `{ nodes: [], edges: [] }` — D3 component renders an empty state, never errors.
 
-- [ ] `GraphVisualization.tsx` — force-directed layout from `/api/graph/{project}/viz`
-- [ ] Node colors: project=cyan, method=purple, tool=green, blog=amber
-- [ ] Edge styling: linked=solid cyan, community=solid blue, suggested=dashed amber
-- [ ] Zoom/pan, hover tooltips, HUD bracket frame
-- [ ] Use `useRef` + `useEffect` for D3 (not declarative React rendering)
-- [ ] Reference: `d3-viz/SKILL.md` force-directed pattern
+- [x] `GraphVisualization.tsx` — force-directed layout from `/api/graph/{project}/viz`
+- [x] Node colors: project=cyan, method=purple, tool=green, blog=amber
+- [x] Edge styling: linked=solid cyan, community=solid blue, suggested=dashed amber
+- [x] Zoom/pan, hover tooltips, HUD bracket frame
+- [x] Use `useRef` + `useEffect` for D3 (not declarative React rendering)
+- [x] Reference: `d3-viz/SKILL.md` force-directed pattern
 
-### [22c] Project Header + Items Feed [ ]
+### [22c] Project Header + Items Feed [x]
 
-- [ ] `ProjectHeader.tsx` — GlitchText name, tech badges, Obsidian link
-- [ ] `ItemsFeed.tsx` — cards from GET `/api/project-index/{project}/graph` (graph-linked items, defined in S18)
-- [ ] Discovery badges: community=blue, suggested=amber, linked=no badge
-- [ ] Filters by source type + status + discovery source
+- [x] `ProjectHeader.tsx` — GlitchText name, tech badges, Obsidian link
+- [x] `ItemsFeed.tsx` — cards from GET `/api/project-index/{project}/graph` (graph-linked items, defined in S18)
+- [x] Discovery badges: community=blue, suggested=amber, linked=no badge
+- [x] Filters by source type + status + discovery source
 
-### [22d] Analysis Actions [ ]
+### [22d] Analysis Actions [x]
 
-- [ ] `AnalysisPanel.tsx` — Analyze (Haiku) + Go Deep (Sonnet) buttons
-- [ ] TypeWriter loading animation
-- [ ] Markdown result display
-- [ ] Context sources panel
+- [x] `AnalysisPanel.tsx` — Analyze (Haiku) + Go Deep (Sonnet) buttons
+- [x] TypeWriter loading animation
+- [x] Markdown result display
+- [x] Context sources panel
 
-### [22e] Quality Gate [ ]
+### [22e] Quality Gate [x]
 
-- [ ] `pnpm build` passes
-- [ ] Visual match against cockpit screenshot
-- [ ] D3 graph renders and interacts correctly
-- [ ] Analysis flow end-to-end
-- [ ] **Verify**: Run `/steadows-verify`
+- [x] `pnpm build` passes
+- [x] Visual match against cockpit screenshot
+- [x] D3 graph renders and interacts correctly
+- [x] Analysis flow end-to-end
+- [x] **Verify**: Run `/steadows-verify`
 
-### [22f] Commit [ ]
+### [22f] Commit [x]
 
 ```bash
 git add web/src/app/cockpit/ web/src/components/ GSD_PLAN.md

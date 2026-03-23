@@ -198,6 +198,10 @@ def _build_entry(
         "pid": None,
         "log_file": None,
         "reviewed": False,
+        "cost_flagged": False,
+        "cost_notes": "",
+        "cost_approved": False,
+        "findings_path": None,
     }
 
 
@@ -314,6 +318,10 @@ _ALLOWED_UPDATE_FIELDS = frozenset(
         "reviewed",
         "retry_count",
         "model",
+        "cost_flagged",
+        "cost_notes",
+        "cost_approved",
+        "findings_path",
     }
 )
 

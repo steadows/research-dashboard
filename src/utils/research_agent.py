@@ -16,6 +16,7 @@ import html as html_module
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -48,6 +49,45 @@ _ALLOWED_TOOLS = [
     "mcp__context7__query-docs",
     "mcp__fetch__fetch",
 ]
+
+# ---------------------------------------------------------------------------
+# Cost detection
+# ---------------------------------------------------------------------------
+
+_COST_KEYWORDS: frozenset[str] = frozenset({
+    "subscription", "pricing", "paid plan", "premium", "api key required",
+    "credit card", "billing", "license fee", "commercial use", "freemium",
+    "per month", "per year", "per seat", "enterprise plan", "pay-as-you-go",
+    "cost per", "charged", "invoice", "trial period", "pro plan",
+    "business plan", "requires payment", "paid tier", "paid feature",
+})
+
+
+def _detect_cost_flags(text: str) -> tuple[bool, str]:
+    """Detect cost/subscription indicators in research report text.
+
+    Args:
+        text: Full research.md content.
+
+    Returns:
+        Tuple of (cost_flagged, cost_notes) where cost_notes is a brief
+        excerpt of the relevant sentences (up to 3, pipe-separated).
+    """
+    flagged: list[str] = []
+    # Split on sentence boundaries
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        stripped = sentence.strip()
+        if not stripped:
+            continue
+        sentence_lower = stripped.lower()
+        if any(kw in sentence_lower for kw in _COST_KEYWORDS):
+            flagged.append(stripped[:200])
+        if len(flagged) >= 3:
+            break
+    if flagged:
+        return True, " | ".join(flagged)
+    return False, ""
+
 
 # ---------------------------------------------------------------------------
 # COSTAR research prompt template
@@ -160,6 +200,87 @@ Only write the file. Confirm the file was written.
 SECURITY NOTE: Verify all package names match official PyPI or npm registry \
 pages exactly. Flag any name that resembles a well-known package with slight \
 typos — treat as potentially malicious.
+</response>
+"""
+
+
+_SANDBOX_COSTAR_PROMPT_TEMPLATE = """\
+<context>
+Item: {name}
+Category: {category}
+
+Research Overview:
+{overview}
+
+Experiment Design from Research:
+{experiment_design}
+</context>
+
+<objective>
+Build a minimal, self-contained Docker experiment that implements the scenario \
+described in "Experiment Design from Research" above. The experiment MUST:
+1. Define a clear, measurable metric (latency ms, accuracy %, throughput ops/s, \
+   token count, or boolean pass/fail with threshold)
+2. Establish a baseline value to compare against (use a stub/mock baseline if \
+   no real baseline exists — document it clearly)
+3. Run the experiment and measure the result against the metric
+4. Write structured results to /workspace/experiment_results.json
+5. Write a human-readable findings report to /workspace/experiment_findings.md
+
+Write exactly these four files to {output_dir}/:
+- Dockerfile — official base image, non-root user (USER nobody), pinned dep versions
+- experiment.py — runs the experiment, writes /workspace/experiment_results.json \
+  and /workspace/experiment_findings.md at the end
+- run.sh — builds and runs the container with output volume mounted:
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  docker build -t {slug} "$SCRIPT_DIR"
+  docker run --rm --network none -v "$SCRIPT_DIR:/workspace" {slug}
+- experiment_plan.md — pre-run description: what will be tested, metric definition, \
+  expected results, pass/fail threshold
+
+experiment_results.json schema (experiment.py MUST write this to /workspace/):
+{{
+  "metric_name": "string — what is being measured",
+  "baseline": 42.0 or null,
+  "result": 38.5,
+  "improvement": -3.5 or null,
+  "passed": true,
+  "description": "one-line summary of what was found"
+}}
+
+experiment_findings.md structure (experiment.py MUST write this to /workspace/):
+# Experiment: {name}
+## What Was Tested
+## Metric Definition
+## Results
+| Metric | Baseline | Result | Improvement |
+|--------|----------|--------|-------------|
+## Interpretation
+## Recommendation
+(end with one of: INTEGRATE / NEEDS_MORE_WORK / NOT_SUITABLE and a one-line reason)
+</objective>
+
+<style>
+Minimal, production-quality Docker. Real, runnable code — no placeholders. \
+experiment.py must actually execute and produce output files.
+</style>
+
+<tone>
+Engineering-grade. Comments only where non-obvious.
+</tone>
+
+<audience>
+Developer who will inspect and run the sandbox locally on macOS.
+</audience>
+
+<response>
+Write all four files to {output_dir}/. Do NOT execute any code on the host. \
+Write files only. Confirm each file path after writing.
+
+SAFETY: Do NOT use RUN curl | bash, RUN wget | sh, or any inline shell pipe \
+execution. Only install from official PyPI or npm. Pin all dependency versions. \
+Network is disabled at runtime (--network none) — document any exceptions in \
+experiment_plan.md.
 </response>
 """
 
@@ -420,6 +541,107 @@ def get_fallback_model(current_model: str | None) -> str | None:
     if next_idx < len(_MODEL_FALLBACK_CHAIN):
         return _MODEL_FALLBACK_CHAIN[next_idx]
     return None
+
+
+def _slugify(text: str) -> str:
+    """Simple kebab-case slug for Docker image names.
+
+    Args:
+        text: Raw name string.
+
+    Returns:
+        Lowercase kebab-case string with only alphanumeric chars and hyphens.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def launch_sandbox_agent(
+    item: dict[str, Any],
+    research_md_path: Path,
+    output_dir: Path,
+) -> subprocess.Popen:
+    """Launch sandbox agent to create Docker experiment files.
+
+    Reads the completed research.md to extract Experiment Design and Overview
+    sections, then spawns a claude subprocess to generate Dockerfile,
+    experiment.py, run.sh, and experiment_plan.md.
+
+    Args:
+        item: Item dict (tool, method, or instagram post).
+        research_md_path: Path to the completed research.md file.
+        output_dir: Directory where experiment files will be written.
+
+    Returns:
+        subprocess.Popen handle. Caller saves .pid to workbench entry.
+
+    Raises:
+        FileNotFoundError: If research_md_path doesn't exist or claude CLI
+            not found in PATH.
+    """
+    if not research_md_path.is_file():
+        raise FileNotFoundError(f"research.md not found: {research_md_path}")
+
+    claude_bin = shutil.which("claude")
+    if claude_bin is None:
+        raise FileNotFoundError("claude CLI not found in PATH")
+
+    content = research_md_path.read_text(encoding="utf-8", errors="replace")
+    sections = _split_sections(content)
+    overview = sections.get("Overview", "")[:1000]
+    experiment_design = sections.get("Experiment Design", "")[:2000]
+
+    name = item.get("name", "Unknown")
+    category = item.get("category", "Unknown")
+    source_type = item.get("source_type", "tool")
+    slug = f"{source_type}-{_slugify(name)}-exp"
+
+    prompt = _SANDBOX_COSTAR_PROMPT_TEMPLATE.format(
+        name=_fmt_safe(name),
+        category=_fmt_safe(category),
+        overview=_fmt_safe(overview),
+        experiment_design=_fmt_safe(experiment_design),
+        output_dir=str(output_dir),
+        slug=_fmt_safe(slug),
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / "sandbox_agent.log"
+
+    _sandbox_tools = ["Read", "Write", "Edit", "Bash", "Glob"]
+
+    cmd = [
+        claude_bin,
+        "-p",
+        prompt,
+        "--model",
+        _SONNET_MODEL,
+        "--allowedTools",
+        ",".join(_sandbox_tools),
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+
+    log_fh = open(log_path, "w", encoding="utf-8")  # noqa: WPS515
+    try:
+        proc = subprocess.Popen(  # noqa: S603
+            cmd,
+            stdout=log_fh,
+            stderr=log_fh,
+            cwd=str(output_dir),
+            shell=False,
+        )
+    finally:
+        log_fh.close()
+
+    logger.info(
+        "Launched sandbox agent for '%s' (pid=%d, slug=%s), log=%s",
+        name,
+        proc.pid,
+        slug,
+        log_path,
+    )
+    return proc
 
 
 def is_retryable_failure(log_file: Path) -> bool:
@@ -688,7 +910,12 @@ def parse_research_output(research_md: Path) -> dict[str, Any]:
             - ``experiment_type``: ``"programmatic"``, ``"manual"``, or ``None``
             - ``summary``: Text of the ``## Overview`` section (may be empty).
     """
-    result: dict[str, Any] = {"experiment_type": None, "summary": ""}
+    result: dict[str, Any] = {
+        "experiment_type": None,
+        "summary": "",
+        "cost_flagged": False,
+        "cost_notes": "",
+    }
 
     if not research_md.is_file():
         return result
@@ -709,6 +936,10 @@ def parse_research_output(research_md: Path) -> dict[str, Any]:
 
     # Extract summary from Overview
     result["summary"] = sections.get("Overview", "").strip()
+
+    cost_flagged, cost_notes = _detect_cost_flags(content)
+    result["cost_flagged"] = cost_flagged
+    result["cost_notes"] = cost_notes
 
     return result
 

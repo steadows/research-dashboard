@@ -5,6 +5,7 @@ and Project Cockpit. Each item shows its current status, synthesis, and
 action buttons for the research and sandbox pipeline (wired in Sessions 10–11).
 """
 
+import json
 import logging
 import subprocess
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 
 import streamlit as st
 
-from utils.page_helpers import get_category_color, safe_html
+from utils.page_helpers import get_category_color, get_vault_path, safe_html
 from utils.research_agent import (
     _MAX_RETRIES,
     _WORKBENCH_ROOT,
@@ -20,6 +21,7 @@ from utils.research_agent import (
     is_agent_running,
     is_retryable_failure,
     launch_research_agent,
+    launch_sandbox_agent,
     parse_agent_activity,
     parse_log_status,
     parse_research_output,
@@ -249,6 +251,8 @@ def _poll_research_status(wb_key: str, entry: dict[str, Any]) -> None:
         {
             "status": "researched",
             "experiment_type": experiment_type,
+            "cost_flagged": parsed.get("cost_flagged", False),
+            "cost_notes": parsed.get("cost_notes", ""),
         },
     )
     logger.info(
@@ -411,6 +415,10 @@ def _render_status_panel(wb_key: str, entry: dict[str, Any]) -> None:
         _render_researching_panel(wb_key, entry)
     elif status == "researched":
         _render_researched_panel(wb_key, entry)
+    elif status == "sandbox_creating":
+        _render_sandbox_creating_panel(wb_key, entry)
+    elif status == "sandbox_ready":
+        _render_sandbox_ready_panel(wb_key, entry)
     elif status == "failed":
         _render_failed_panel(wb_key, entry)
 
@@ -479,25 +487,90 @@ def _render_report_buttons(wb_key: str, research_html: Path, research_md: Path) 
             st.caption("research.md not found.")
 
 
-def _render_programmatic_gate(wb_key: str, reviewed: bool) -> None:
-    """Render programmatic experiment review gate buttons.
+def _render_cost_warning(wb_key: str, entry: dict[str, Any]) -> None:
+    """Render cost/subscription warning banner with acknowledgement button.
 
     Args:
         wb_key: Namespaced workbench key.
-        reviewed: Whether the item has been marked ready to experiment.
+        entry: Workbench entry dict with cost_notes set.
     """
+    cost_notes = entry.get("cost_notes", "")
+    st.warning(
+        "⚠️ **Cost / Subscription Detected**\n\n"
+        f"The research report flags potential costs for this tool:\n\n"
+        f"*{cost_notes}*\n\n"
+        "Review the pricing before running the experiment. Click below to acknowledge."
+    )
+    if st.button(
+        "💳 I Acknowledge the Cost — Proceed",
+        key=f"workbench__cost_ack_{wb_key}",
+    ):
+        logger.info("UI: Cost acknowledged for '%s'", wb_key)
+        update_workbench_item(wb_key, {"cost_approved": True})
+        st.rerun()
+
+
+def _render_programmatic_gate(wb_key: str, entry: dict[str, Any]) -> None:
+    """Render programmatic experiment review gate.
+
+    Gate order:
+    1. Show "Ready to Experiment" if not yet reviewed.
+    2. Show cost warning if cost flagged and not approved.
+    3. Show "Start Sandbox" once reviewed and cost cleared.
+
+    Args:
+        wb_key: Namespaced workbench key.
+        entry: Workbench entry dict.
+    """
+    reviewed = entry.get("reviewed", False)
+    cost_flagged = entry.get("cost_flagged", False)
+    cost_approved = entry.get("cost_approved", False)
+
     if not reviewed:
         if st.button("✅ Ready to Experiment", key=f"workbench__ready_{wb_key}"):
             logger.info("UI: Ready to Experiment clicked for '%s'", wb_key)
             update_workbench_item(wb_key, {"reviewed": True})
             st.rerun()
-    else:
-        st.button(
-            "🧪 Start Sandbox",
-            key=f"workbench__sandbox_{wb_key}",
-            disabled=True,
-            help="Sandbox wired in Session 11",
+        return
+
+    # Reviewed — check cost gate before sandbox
+    if cost_flagged and not cost_approved:
+        _render_cost_warning(wb_key, entry)
+        return
+
+    # Reviewed + cost cleared — show sandbox button
+    if st.button("🧪 Start Sandbox", key=f"workbench__sandbox_{wb_key}"):
+        logger.info("UI: Start Sandbox clicked for '%s'", wb_key)
+        _handle_sandbox_click(wb_key, entry)
+
+
+def _handle_sandbox_click(wb_key: str, entry: dict[str, Any]) -> None:
+    """Handle Start Sandbox button click — launch sandbox agent.
+
+    Args:
+        wb_key: Namespaced workbench key.
+        entry: Workbench entry dict.
+    """
+    item = entry.get("item", {})
+    output_dir = _get_output_dir(wb_key, entry)
+    research_md = output_dir / "research.md"
+    sandbox_log = output_dir / "sandbox_agent.log"
+
+    try:
+        proc = launch_sandbox_agent(item, research_md, output_dir)
+        update_workbench_item(
+            wb_key,
+            {
+                "status": "sandbox_creating",
+                "pid": proc.pid,
+                "log_file": str(sandbox_log),
+            },
         )
+    except FileNotFoundError as exc:
+        logger.error("Sandbox agent launch failed: %s", exc, exc_info=True)
+        st.error(f"Failed to start sandbox: {exc}")
+        update_workbench_item(wb_key, {"status": "failed"})
+    st.rerun()
 
 
 def _render_manual_panel(research_md: Path) -> None:
@@ -531,12 +604,11 @@ def _render_researched_panel(wb_key: str, entry: dict[str, Any]) -> None:
     research_md = output_dir / "research.md"
     research_html = output_dir / "research.html"
     experiment_type = entry.get("experiment_type")
-    reviewed = entry.get("reviewed", False)
 
     _render_report_buttons(wb_key, research_html, research_md)
 
     if experiment_type == "programmatic":
-        _render_programmatic_gate(wb_key, reviewed)
+        _render_programmatic_gate(wb_key, entry)
     elif experiment_type == "manual":
         _render_manual_panel(research_md)
 
@@ -567,6 +639,184 @@ def _render_failed_panel(wb_key: str, entry: dict[str, Any]) -> None:
     if st.button("🔁 Retry Research", key=f"workbench__retry_{wb_key}"):
         _handle_research_click(wb_key, entry)
         return
+
+
+def _render_sandbox_creating_panel(wb_key: str, entry: dict[str, Any]) -> None:
+    """Render live log tail while sandbox agent is building experiment files.
+
+    Polls the agent on each render. When PID exits, finalises the sandbox
+    entry: reads findings, writes vault note, transitions to sandbox_ready.
+
+    Args:
+        wb_key: Namespaced workbench key.
+        entry: Workbench entry dict.
+    """
+    pid = entry.get("pid")
+    log_file_str = entry.get("log_file")
+    log_file = Path(log_file_str) if log_file_str else None
+
+    if pid and not is_agent_running(pid):
+        _finalise_sandbox(wb_key, entry)
+        return
+
+    st.caption("🧪 Sandbox agent writing experiment files…")
+
+    if log_file and log_file.exists():
+        activities = parse_agent_activity(log_file, max_items=8)
+        if activities:
+            feed_html = "".join(
+                f'<div style="color:#9CA3AF;font-size:0.82rem;padding:2px 0">'
+                f'<span style="color:#059669;margin-right:6px">▸</span>'
+                f"{safe_html(step)}</div>"
+                for step in activities
+            )
+            st.markdown(
+                f'<div style="background:#111827;border:1px solid #1F2937;'
+                f"border-radius:6px;padding:10px 14px;margin:8px 0\">"
+                f"{feed_html}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("Starting up…")
+
+    if st.button("🔄 Refresh", key=f"workbench__refresh_sandbox_{wb_key}"):
+        st.rerun()
+
+
+def _finalise_sandbox(wb_key: str, entry: dict[str, Any]) -> None:
+    """Finalise sandbox after agent completes: read findings, write vault note.
+
+    Args:
+        wb_key: Namespaced workbench key.
+        entry: Workbench entry dict (sandbox_creating status).
+    """
+    output_dir = _get_output_dir(wb_key, entry)
+    findings_md = output_dir / "experiment_findings.md"
+    item = entry.get("item", {})
+
+    updates: dict[str, Any] = {
+        "status": "sandbox_ready",
+        "sandbox_dir": str(output_dir),
+    }
+
+    if findings_md.exists():
+        updates["findings_path"] = str(findings_md)
+
+    # Write vault note
+    try:
+        vault_path = get_vault_path()
+        from utils.vault_writer import write_sandbox_note
+
+        parsed = parse_research_output(output_dir / "research.md")
+        findings_text = (
+            findings_md.read_text(encoding="utf-8") if findings_md.exists() else ""
+        )
+        note_path = write_sandbox_note(
+            item,
+            parsed.get("summary", ""),
+            output_dir,
+            vault_path,
+            findings_text=findings_text,
+        )
+        updates["vault_note"] = str(note_path)
+        logger.info("Wrote vault note: %s", note_path)
+    except Exception as exc:
+        logger.warning("Failed to write vault note: %s", exc)
+
+    update_workbench_item(wb_key, updates)
+    st.rerun()
+
+
+def _render_results_summary(results_json: Path) -> None:
+    """Render experiment results metrics from experiment_results.json.
+
+    Args:
+        results_json: Path to experiment_results.json.
+    """
+    if not results_json.exists():
+        return
+    try:
+        results = json.loads(results_json.read_text(encoding="utf-8"))
+    except Exception:
+        return
+
+    metric = results.get("metric_name", "")
+    result_val = results.get("result", "")
+    baseline = results.get("baseline")
+    improvement = results.get("improvement")
+    passed = results.get("passed", False)
+    desc = results.get("description", "")
+
+    status_color = "#10B981" if passed else "#EF4444"
+    status_label = "PASSED" if passed else "FAILED"
+
+    cols = st.columns([1, 1, 1])
+    with cols[0]:
+        st.metric("Metric", metric or "—")
+    with cols[1]:
+        st.metric("Result", str(result_val))
+    with cols[2]:
+        if baseline is not None:
+            delta_str = f"{improvement:+.2f}" if improvement is not None else "—"
+            st.metric("Baseline", str(baseline), delta=delta_str)
+
+    st.markdown(
+        f'<span style="background:{status_color};color:#fff;padding:3px 10px;'
+        f"border-radius:4px;font-size:0.75rem;font-weight:600\">{status_label}</span>"
+        f" {safe_html(desc)}",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sandbox_ready_panel(wb_key: str, entry: dict[str, Any]) -> None:
+    """Render completed sandbox with findings, metrics, and action buttons.
+
+    Args:
+        wb_key: Namespaced workbench key.
+        entry: Workbench entry dict (sandbox_ready status).
+    """
+    output_dir = _get_output_dir(wb_key, entry)
+    findings_md = output_dir / "experiment_findings.md"
+    results_json = output_dir / "experiment_results.json"
+    vault_note_str = entry.get("vault_note")
+
+    # Results metrics row
+    _render_results_summary(results_json)
+
+    # Findings report
+    if findings_md.exists():
+        with st.expander("📊 Experiment Findings", expanded=True):
+            st.markdown(findings_md.read_text(encoding="utf-8"))
+
+    # Action buttons
+    col_open, col_obsidian = st.columns([1, 1])
+    with col_open:
+        if st.button(
+            "📂 Open Sandbox Dir", key=f"workbench__open_sandbox_{wb_key}"
+        ):
+            subprocess.Popen(["open", str(output_dir)])  # noqa: S603 S607
+
+    with col_obsidian:
+        if vault_note_str:
+            try:
+                vault_path = get_vault_path()
+                vault_name = vault_path.name
+                rel = Path(vault_note_str).relative_to(vault_path)
+                from utils.cockpit_components import build_obsidian_url
+                url = build_obsidian_url(vault_name, str(rel))
+                st.link_button("🗂️ Open in Obsidian", url)
+            except Exception:
+                pass
+
+    # Run instructions
+    with st.expander("🐳 Run Experiment"):
+        run_sh = output_dir / "run.sh"
+        if run_sh.exists():
+            st.code(f"cd {output_dir}\nbash run.sh", language="bash")
+        else:
+            st.caption(
+                "run.sh not found — sandbox agent may not have written all files."
+            )
 
 
 def _render_action_buttons(wb_key: str, entry: dict[str, Any]) -> None:
