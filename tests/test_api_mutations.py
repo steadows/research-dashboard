@@ -121,7 +121,7 @@ def _apply_patches(stack: ExitStack) -> None:
         )
     )
     p(patch("utils.research_agent.is_agent_running", return_value=True))
-    p(patch("utils.research_agent.tail_log", return_value="Researching..."))
+    p(patch("utils.research_agent.tail_log", return_value=("Researching...", 0)))
     p(
         patch(
             "api.routers.research.launch_research_agent",
@@ -129,7 +129,7 @@ def _apply_patches(stack: ExitStack) -> None:
         )
     )
     p(patch("api.routers.research.is_agent_running", return_value=True))
-    p(patch("api.routers.research.tail_log", return_value="Researching..."))
+    p(patch("api.routers.research.tail_log", return_value=("Researching...", 0)))
 
     # instagram_ingester — patch at both source and usage sites
     p(
@@ -371,28 +371,28 @@ class TestResearchRouter:
     """POST /api/research/{key} and GET /api/research/{key}/status."""
 
     def test_launch_research(self, client: TestClient) -> None:
-        """POST /api/research/{key} launches research agent."""
-        resp = client.post("/api/research/tool::Cursor Tab")
+        """POST /api/research/launch/{key} launches research agent."""
+        resp = client.post("/api/research/launch/tool::Cursor Tab")
         assert resp.status_code == 202
         data = resp.json()
         assert data["pid"] == 12345
         assert "model" in data
 
     def test_launch_research_not_found(self, client: TestClient) -> None:
-        """POST /api/research/{key} returns 404 for unknown key."""
-        resp = client.post("/api/research/tool::NonExistent")
+        """POST /api/research/launch/{key} returns 404 for unknown key."""
+        resp = client.post("/api/research/launch/tool::NonExistent")
         assert resp.status_code == 404
 
     def test_research_status(self, client: TestClient) -> None:
-        """GET /api/research/{key}/status returns agent status."""
-        resp = client.get("/api/research/tool::Cursor Tab/status")
+        """GET /api/research/status/{key} returns agent status."""
+        resp = client.get("/api/research/status/tool::Cursor Tab")
         assert resp.status_code == 200
         data = resp.json()
         assert "running" in data
 
     def test_research_status_not_found(self, client: TestClient) -> None:
-        """GET /api/research/{key}/status returns 404 for unknown key."""
-        resp = client.get("/api/research/tool::NonExistent/status")
+        """GET /api/research/status/{key} returns 404 for unknown key."""
+        resp = client.get("/api/research/status/tool::NonExistent")
         assert resp.status_code == 404
 
 

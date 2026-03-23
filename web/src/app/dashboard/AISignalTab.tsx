@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { mutate as swrMutate } from "swr";
 import { Badge } from "@/components/ui/badge";
 import { GlowButton } from "@/components/ui/glow-button";
 import { apiMutate } from "@/lib/api";
@@ -11,6 +12,20 @@ import type { MethodItem } from "./types";
 function MethodCard({ item, index }: { item: MethodItem; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [dismissing, setDismissing] = useState(false);
+
+  const handleDismiss = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (dismissing) return;
+    setDismissing(true);
+    try {
+      await apiMutate(`/status/method::${item.name}`, { body: { status: "dismissed" } });
+      await swrMutate("/methods");
+    } catch (err) {
+      console.error("Dismiss failed:", err);
+      setDismissing(false);
+    }
+  }, [item.name, dismissing]);
 
   const handleWorkbench = useCallback(async () => {
     if (wbStatus !== "idle") return;
@@ -29,6 +44,7 @@ function MethodCard({ item, index }: { item: MethodItem; index: number }) {
           },
         },
       });
+      await swrMutate("/workbench");
       setWbStatus("sent");
       setTimeout(() => setWbStatus("idle"), 2000);
     } catch (err) {
@@ -114,6 +130,14 @@ function MethodCard({ item, index }: { item: MethodItem; index: number }) {
               disabled={wbStatus !== "idle"}
             >
               {wbStatus === "sent" ? "SENT TO WORKBENCH" : wbStatus === "sending" ? "SENDING..." : "SEND TO WORKBENCH"}
+            </GlowButton>
+            <GlowButton
+              variant="secondary"
+              className="py-2 text-[10px] px-4"
+              onClick={handleDismiss}
+              disabled={dismissing}
+            >
+              {dismissing ? "..." : "DISMISS"}
             </GlowButton>
           </div>
         </div>

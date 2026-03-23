@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { mutate as swrMutate } from "swr";
 import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Badge } from "@/components/ui/badge";
 import { GlowButton } from "@/components/ui/glow-button";
 import { SectionRevealGroup, SectionRevealItem } from "@/components/effects/SectionReveal";
 import { apiMutate } from "@/lib/api";
-import { useDashboardStats, useReports, useTools } from "./hooks";
+import { useDashboardStats, useHomeSummary, useReports, useTools } from "./hooks";
 import { MetricCardsSkeleton, FeedSkeleton, ToolsListSkeleton } from "./Skeleton";
-import type { ReportItem, ToolItem } from "./types";
+import type { HomeSummary, ReportItem, ToolItem } from "./types";
 
 /** Format number with leading zero for single digits */
 function pad(n: number): string {
@@ -30,9 +31,6 @@ function MetricCards() {
           index="[01]"
           title="Papers"
           value={pad(data.papers)}
-          delta={"+2.4% \u0394"}
-          deltaColor="green"
-          meta={"40.7128\u00b0 N"}
         />
       </SectionRevealItem>
       <SectionRevealItem>
@@ -40,9 +38,6 @@ function MetricCards() {
           index="[02]"
           title="Tools"
           value={pad(data.tools)}
-          delta="SYNCED"
-          deltaColor="amber"
-          meta={"74.0060\u00b0 W"}
         />
       </SectionRevealItem>
       <SectionRevealItem>
@@ -50,7 +45,6 @@ function MetricCards() {
           index="[03]"
           title="Blog Queue"
           value={pad(data.blog_queue)}
-          meta="EST. 14:00"
         />
       </SectionRevealItem>
       <SectionRevealItem>
@@ -58,49 +52,227 @@ function MetricCards() {
           index="[04]"
           title="Active Projects"
           value={pad(data.active_projects)}
-          deltaColor="green"
-          meta="AUTH: LVL 5"
         />
       </SectionRevealItem>
     </SectionRevealGroup>
   );
 }
 
-function ResearchFeedCard({ item }: { item: ReportItem }) {
-  const borderColor =
-    item.type === "journalclub" ? "border-accent-green" : "border-accent-amber";
-  const badgeVariant = item.type === "journalclub" ? "journalclub" : "tldr";
-  const badgeLabel = item.type === "journalclub" ? "JOURNALCLUB" : "TLDR";
+function ResearchFeedCard({
+  item,
+  expanded,
+  onToggle,
+}: {
+  item: ReportItem;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const reduceMotion = useReducedMotion();
+  const isJC = item.type === "journalclub";
+  const borderColor = isJC ? "border-accent-green" : "border-accent-amber";
+  const hoverGlow = isJC ? "hover:box-glow-green" : "hover:box-glow-amber";
+  const badgeVariant = isJC ? "journalclub" : "tldr";
+  const badgeLabel = isJC ? "JOURNALCLUB" : "TLDR";
 
   return (
     <div
-      className={`bg-bg-surface p-5 border-l-4 ${borderColor} group hover:bg-surface-high/50 transition-colors`}
+      onClick={onToggle}
+      className={`bg-bg-surface border-l-4 ${borderColor} ${hoverGlow} cursor-pointer group hover:bg-surface-high/50 transition-all duration-200`}
     >
-      <div className="flex justify-between items-start mb-3">
-        <h3 className="font-mono font-bold text-white group-hover:text-accent-cyan transition-colors pr-3">
-          {item.title}
-        </h3>
-        <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+      <div className="p-5 pb-3">
+        <div className="flex justify-between items-start mb-1">
+          <div className="flex items-center gap-2 pr-3">
+            <m.span
+              animate={{ rotate: expanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-accent-cyan/60 text-[10px]"
+            >
+              ▶
+            </m.span>
+            <h3 className="font-mono font-bold text-white group-hover:text-accent-cyan transition-colors">
+              {item.title}
+            </h3>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-mono text-[10px] text-outline">{item.date}</span>
+            <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+          </div>
+        </div>
       </div>
-      <p className="font-mono text-[11px] text-outline mb-3 italic">
-        Published: {item.date}
-      </p>
-      {item.highlights && item.highlights.length > 0 && (
-        <ul className="space-y-2 text-sm text-text-primary">
-          {item.highlights.map((h, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <span className="mt-1.5 h-1 w-1 shrink-0 bg-accent-cyan" />
-              {h}
-            </li>
-          ))}
-        </ul>
-      )}
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { height: { type: "spring", stiffness: 400, damping: 30 }, opacity: { duration: 0.2 } }
+            }
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 space-y-3">
+              {item.summary && (
+                <p className="font-mono text-[11px] text-text-secondary leading-relaxed border-l-2 border-accent-cyan/30 pl-3">
+                  {item.summary}
+                </p>
+              )}
+              {item.highlights && item.highlights.length > 0 && (
+                <ul className="space-y-2 text-sm text-text-primary">
+                  {item.highlights.map((h, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-1.5 h-1 w-1 shrink-0 bg-accent-cyan" />
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function IntelBriefCard({
+  summary,
+  expanded,
+  onToggle,
+}: {
+  summary: HomeSummary;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div
+      onClick={onToggle}
+      className="bg-bg-surface border-l-4 border-accent-cyan hover:box-glow-cyan cursor-pointer group hover:bg-surface-high/50 transition-all duration-200"
+    >
+      <div className="p-5 pb-3">
+        <div className="flex justify-between items-start mb-1">
+          <div className="flex items-center gap-2 pr-3">
+            <m.span
+              animate={{ rotate: expanded ? 90 : 0 }}
+              transition={{ duration: 0.15 }}
+              className="text-accent-cyan/60 text-[10px]"
+            >
+              ▶
+            </m.span>
+            <h3 className="font-mono font-bold text-white group-hover:text-accent-cyan transition-colors">
+              INTEL BRIEF
+            </h3>
+          </div>
+          <Badge variant="default">LATEST</Badge>
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { height: { type: "spring", stiffness: 400, damping: 30 }, opacity: { duration: 0.2 } }
+            }
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 grid grid-cols-2 gap-6">
+              {/* Top Picks */}
+              {summary.top_picks.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-headline text-[10px] uppercase tracking-widest text-accent-cyan/70">
+                    JournalClub Top Picks
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {summary.top_picks.slice(0, 3).map((pick, i) => (
+                      <li key={i} className="flex items-start gap-2 text-[11px] font-mono text-text-primary leading-relaxed">
+                        <span className="mt-1.5 h-1 w-1 shrink-0 bg-accent-green" />
+                        {pick}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Blog Ideas */}
+              {summary.blog_ideas.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-headline text-[10px] uppercase tracking-widest text-accent-cyan/70">
+                    Blog Ideas
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {summary.blog_ideas.map((idea, i) => (
+                      <li key={i} className="flex items-center gap-2 text-[11px] font-mono text-text-primary">
+                        <span className="text-white font-bold">{idea.title}</span>
+                        <span className="text-[9px] text-outline uppercase">{idea.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Top Tools */}
+              {summary.top_tools.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-headline text-[10px] uppercase tracking-widest text-accent-cyan/70">
+                    Top Tools
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {summary.top_tools.map((tool, i) => (
+                      <li key={i} className="flex items-center gap-2 text-[11px] font-mono">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent-amber shadow-[0_0_5px_#ffbf00]" />
+                        <span className="text-white">{tool.name}</span>
+                        {tool.category && (
+                          <span className="text-[9px] text-outline">({tool.category})</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* AI Signal */}
+              {summary.ai_signal && (
+                <div className="space-y-2">
+                  <h4 className="font-headline text-[10px] uppercase tracking-widest text-accent-cyan/70">
+                    Weekly AI Signal
+                  </h4>
+                  <p className="text-[11px] font-mono text-text-secondary leading-relaxed">
+                    {summary.ai_signal}
+                  </p>
+                  {summary.ai_signal_source && (
+                    <p className="text-[9px] font-mono text-accent-cyan/40">
+                      From {summary.ai_signal_source}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 function ResearchFeed() {
   const { data, isLoading } = useReports();
+  const { data: summary, isLoading: summaryLoading } = useHomeSummary();
+  // -1 = intel brief, 0+ = report cards, -2 = none expanded.
+  // Intel brief expanded by default.
+  const [expandedIndex, setExpandedIndex] = useState(-1);
+
+  const handleToggle = useCallback((index: number) => {
+    setExpandedIndex((prev) => (prev === index ? -2 : index));
+  }, []);
 
   return (
     <section className="lg:col-span-2 space-y-6">
@@ -113,14 +285,26 @@ function ResearchFeed() {
         </span>
       </div>
 
-      {isLoading || !data ? (
+      {(isLoading && !data) || summaryLoading ? (
         <FeedSkeleton count={3} />
       ) : (
-        <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-          {data.slice(0, 10).map((item, i) => (
-            <ResearchFeedCard key={i} item={item} />
+        <div className="space-y-4 max-h-[700px] overflow-y-auto p-2 -m-2">
+          {summary && (
+            <IntelBriefCard
+              summary={summary}
+              expanded={expandedIndex === -1}
+              onToggle={() => handleToggle(-1)}
+            />
+          )}
+          {data?.slice(0, 10).map((item, i) => (
+            <ResearchFeedCard
+              key={i}
+              item={item}
+              expanded={expandedIndex === i}
+              onToggle={() => handleToggle(i)}
+            />
           ))}
-          {data.length === 0 && (
+          {(!data || data.length === 0) && !summary && (
             <p className="font-mono text-sm text-text-secondary">
               No reports available
             </p>
@@ -160,6 +344,7 @@ function ToolRadarItem({ tool }: { tool: ToolItem }) {
           },
         },
       });
+      await swrMutate("/workbench");
       setWbStatus("sent");
       setTimeout(() => setWbStatus("idle"), 2000);
     } catch (err) {
@@ -219,14 +404,14 @@ function ToolRadarItem({ tool }: { tool: ToolItem }) {
             className="overflow-hidden"
           >
             <div className="pt-2 space-y-2">
-              {tool.notes && (
+              {(tool.summary || tool.notes) && (
                 <m.p
                   initial={{ x: -8 }}
                   animate={{ x: 0 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.05 }}
                   className="font-mono text-[10px] text-text-secondary leading-relaxed pl-[18px]"
                 >
-                  {tool.notes}
+                  {tool.summary || tool.notes}
                 </m.p>
               )}
               {tool.source && (
@@ -304,85 +489,10 @@ function ToolsRadarSidebar() {
         )}
       </div>
 
-      {/* Radar graphic placeholder */}
-      <div className="aspect-square relative flex items-center justify-center border border-accent-cyan/10">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="h-full w-full scale-90 border border-accent-cyan/20 rounded-full" />
-          <div className="absolute h-full w-full scale-75 border border-accent-cyan/10 rounded-full" />
-          <div className="absolute h-full w-full scale-50 border border-accent-cyan/5 rounded-full" />
-        </div>
-        <div className="absolute left-1/2 top-0 h-full w-[1px] -translate-x-1/2 bg-accent-cyan/20" />
-        <div className="absolute top-1/2 left-0 h-[1px] w-full -translate-y-1/2 bg-accent-cyan/20" />
-        <span className="font-mono text-[10px] text-accent-cyan/60 z-10 bg-bg-base px-2">
-          RADAR ACTIVE
-        </span>
-      </div>
     </section>
   );
 }
 
-function WeeklySignal() {
-  return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-headline font-bold text-lg tracking-widest text-cyan-fixed uppercase">
-          Weekly Signal
-        </h2>
-        <div className="flex gap-4">
-          <div className="flex items-center gap-2">
-            <div className="h-1 w-3 bg-accent-cyan" />
-            <span className="font-mono text-[10px] text-outline">
-              INTEL_DENSITY
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="h-1 w-3 bg-outline-variant" />
-            <span className="font-mono text-[10px] text-outline">BASELINE</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="h-48 bg-bg-surface border border-outline-variant/20 relative overflow-hidden p-4">
-        {/* Grid lines */}
-        <div className="absolute inset-0 grid grid-cols-7 grid-rows-4 pointer-events-none opacity-10">
-          {Array.from({ length: 28 }, (_, i) => (
-            <div
-              key={i}
-              className="border-r border-b border-accent-cyan"
-            />
-          ))}
-        </div>
-
-        {/* SVG chart placeholder */}
-        <svg
-          className="absolute inset-0 h-full w-full p-4 overflow-visible"
-          preserveAspectRatio="none"
-        >
-          <path
-            className="drop-glow-cyan"
-            d="M0 120 L80 110 L160 140 L240 80 L320 100 L400 30 L480 90 L560 70 L640 110 L720 40 L800 60"
-            fill="none"
-            stroke="#00F0FF"
-            strokeWidth="2"
-          />
-          <circle cx="400" cy="30" fill="#00F0FF" r="3" />
-          <circle cx="720" cy="40" fill="#00F0FF" r="3" />
-        </svg>
-
-        {/* Day labels */}
-        <div className="absolute bottom-2 left-4 right-4 flex justify-between font-mono text-[9px] text-outline/60">
-          <span>MON</span>
-          <span>TUE</span>
-          <span>WED</span>
-          <span>THU</span>
-          <span>FRI</span>
-          <span>SAT</span>
-          <span>SUN</span>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -400,7 +510,6 @@ export function HomeTab() {
         <ToolsRadarSidebar />
       </div>
 
-      <WeeklySignal />
     </div>
   );
 }

@@ -209,9 +209,8 @@ def _build_entry(
 def _identity_key(item: dict[str, Any]) -> str:
     """Return the identity value used for workbench keying.
 
-    Instagram items key on ``shortcode`` (globally unique per post) while
-    preserving the human-readable ``name`` for display.  All other source
-    types key on ``name`` as before.
+    All source types key on ``name`` for human-readable display in the
+    workbench and archive.
 
     Args:
         item: Item dict from parser.
@@ -219,12 +218,6 @@ def _identity_key(item: dict[str, Any]) -> str:
     Returns:
         The string used as the second segment of the namespaced key.
     """
-    source_type = item.get("source_type", "tool")
-    if source_type == "instagram":
-        shortcode = item.get("shortcode", "").strip()
-        if not shortcode:
-            raise ValueError(f"Instagram item missing shortcode: {item.get('name')!r}")
-        return shortcode
     return item["name"]
 
 

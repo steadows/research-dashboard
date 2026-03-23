@@ -10,6 +10,7 @@ export const NAV_ROUTES = [
 export const SIDEBAR_ROUTES = [
   { href: "/archive", label: "ARCHIVE" },
   { href: "/graph", label: "GRAPH" },
+  { href: "/reports", label: "REPORTS" },
 ] as const;
 
 export type NavRoute = (typeof NAV_ROUTES)[number];

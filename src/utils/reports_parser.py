@@ -105,6 +105,117 @@ def _parse_tldr_report(md_file: Path) -> dict[str, Any] | None:
     }
 
 
+def parse_journalclub_papers(vault_path: Path) -> list[dict[str, Any]]:
+    """Extract individual papers from all JournalClub reports.
+
+    Args:
+        vault_path: Root path to the Obsidian vault.
+
+    Returns:
+        List of paper dicts with title, authors, year, synthesis, relevance,
+        blog_potential, project_applications, etc. Sorted newest-report first.
+    """
+    reports = parse_journalclub_reports(vault_path)
+    papers: list[dict[str, Any]] = []
+
+    for report in reports:
+        report_date = report.get("date", "")
+        content = report.get("content", "")
+        extracted = _extract_papers_from_content(content, report_date)
+        papers.extend(extracted)
+
+    logger.debug("Parsed %d total papers from JournalClub reports", len(papers))
+    return papers
+
+
+# Match paper headings like "### 1. Paper Title" or "### Paper Title"
+_PAPER_HEADING_RE = re.compile(r"^###\s+(?:\d+\.\s+)?(.+)$", re.MULTILINE)
+
+# Field extractors for paper metadata
+_FIELD_PATTERNS: dict[str, re.Pattern[str]] = {
+    "authors": re.compile(r"\*\*Authors?:\*\*\s*(.+?)(?:\s*\||\s*$)"),
+    "year": re.compile(r"\*\*Year:\*\*\s*(\S+)"),
+    "link": re.compile(r"\*\*Link:\*\*\s*(.+?)(?:\s*\||\s*$)"),
+    "snippet": re.compile(r"\*\*Snippet:\*\*\s*(.+?)(?=\n\n|\Z)", re.DOTALL),
+    "synthesis": re.compile(r"\*\*Synthesis:\*\*\s*(.+?)(?=\n\n\*\*|\Z)", re.DOTALL),
+    "relevance": re.compile(r"\*\*Relevance:\*\*\s*(.+?)(?=\n\n\*\*|\Z)", re.DOTALL),
+    "blog_potential": re.compile(
+        r"\*\*Blog Potential:\*\*\s*(.+?)(?=\n\n\*\*|\Z)", re.DOTALL
+    ),
+}
+
+
+def _extract_papers_from_content(
+    content: str, report_date: str
+) -> list[dict[str, Any]]:
+    """Extract individual papers from a JournalClub report's markdown content."""
+    papers: list[dict[str, Any]] = []
+
+    # Split on ### headings (paper sections)
+    headings = list(_PAPER_HEADING_RE.finditer(content))
+    if not headings:
+        return papers
+
+    for idx, match in enumerate(headings):
+        title = match.group(1).strip()
+
+        # Get the body between this heading and the next (or EOF)
+        start = match.end()
+        end = headings[idx + 1].start() if idx + 1 < len(headings) else len(content)
+        body = content[start:end].strip()
+
+        paper: dict[str, Any] = {
+            "title": title,
+            "report_date": report_date,
+        }
+
+        # Extract structured fields
+        for field, pattern in _FIELD_PATTERNS.items():
+            field_match = pattern.search(body)
+            if field_match:
+                value = field_match.group(1).strip().rstrip("|").strip()
+                # Strip markdown formatting
+                value = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", value)
+                value = re.sub(r"\[\[(.+?)(?:\|.+?)?\]\]", r"\1", value)
+                paper[field] = value
+            else:
+                paper[field] = None
+
+        # Extract project applications (bulleted list after "Project Applications:")
+        apps_match = re.search(
+            r"\*\*Project Applications:\*\*\s*\n((?:\s*[-*]\s+.+\n?)+)", body
+        )
+        if apps_match:
+            raw_apps = apps_match.group(1).strip()
+            app_lines = [
+                re.sub(
+                    r"\[\[(.+?)(?:\|.+?)?\]\]",
+                    r"\1",
+                    line.strip().lstrip("- *").strip(),
+                )
+                for line in raw_apps.splitlines()
+                if line.strip()
+            ]
+            paper["project_applications"] = app_lines
+        else:
+            paper["project_applications"] = []
+
+        # Extract relevance level (High/Medium/Low/None)
+        if paper.get("relevance"):
+            level_match = re.match(
+                r"(High|Medium|Low|None)", paper["relevance"], re.IGNORECASE
+            )
+            paper["relevance_level"] = (
+                level_match.group(1).capitalize() if level_match else None
+            )
+        else:
+            paper["relevance_level"] = None
+
+        papers.append(paper)
+
+    return papers
+
+
 def _extract_ai_signal(content: str) -> str:
     """Extract the AI Signal section content.
 

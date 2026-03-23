@@ -1,6 +1,7 @@
 """Projects router — project list, detail, smart index, graph-linked items."""
 
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,6 +16,36 @@ from utils.vault_parser import parse_projects
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["projects"])
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _clean_discovery_source(raw: str) -> str:
+    """Strip markdown, URLs, and 'Link:' labels from a source string."""
+    text = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", raw)
+    text = re.sub(r"\[\[(.+?)(?:\|.+?)?\]\]", r"\1", text)
+    text = _URL_RE.sub("", text)
+    text = re.sub(r"\bLink:\s*", "", text)
+    text = re.sub(r"\s*\|\s*$", "", text).strip()
+    return text
+
+
+def _to_project_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Map smart_matcher item → frontend ProjectItem contract.
+
+    smart_matcher returns: name, source_type, source, status, match_type, confidence, ...
+    Frontend expects: title, type, discovery_source, relevance_score, status, source
+    """
+    return {
+        "title": item.get("name", ""),
+        "type": item.get("source_type", "method"),
+        "source": item.get("source", ""),
+        "status": item.get("status", ""),
+        "discovery_source": _clean_discovery_source(item.get("source", "")),
+        "relevance_score": round(item.get("confidence", 0) * 100)
+        if item.get("confidence") is not None
+        else None,
+    }
 
 
 @router.get("/projects")
@@ -49,7 +80,7 @@ def get_project_index(
 ) -> list[dict[str, Any]]:
     """Get smart-matched items for a project (Tier 1 + Tier 2)."""
     index = build_smart_project_index(vault_path)
-    return index.get(project, [])
+    return [_to_project_item(item) for item in index.get(project, [])]
 
 
 @router.get("/project-index/{project}/graph")

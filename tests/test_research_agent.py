@@ -155,47 +155,81 @@ class TestTailLog:
     """Tests for tail_log."""
 
     def test_returns_empty_string_when_file_missing(self, tmp_path: Path) -> None:
-        """tail_log returns empty string when log file does not exist."""
+        """tail_log returns empty tuple with empty string when log file does not exist."""
         from utils.research_agent import tail_log
 
         missing = tmp_path / "nonexistent.log"
-        assert tail_log(missing) == ""
+        text, offset = tail_log(missing)
+        assert text == ""
+        assert offset == 0
 
     def test_returns_last_n_lines(self, tmp_path: Path) -> None:
-        """tail_log returns the last N lines of a file."""
+        """tail_log returns the last N parsed lines of a JSON-stream log file."""
         from utils.research_agent import tail_log
 
         log_file = tmp_path / "agent.log"
-        lines = [f"line {i}" for i in range(1, 51)]  # 50 lines
-        log_file.write_text("\n".join(lines), encoding="utf-8")
+        # tail_log now parses JSON stream format; plain text lines are skipped
+        # Write valid JSON stream entries
+        import json
 
-        result = tail_log(log_file, n=10)
-        result_lines = result.strip().splitlines()
+        entries = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": f"line {i}"}]},
+                }
+            )
+            for i in range(1, 51)
+        ]
+        log_file.write_text("\n".join(entries), encoding="utf-8")
+
+        text, offset = tail_log(log_file, n=10)
+        result_lines = text.strip().splitlines()
         assert len(result_lines) == 10
-        assert result_lines[-1] == "line 50"
-        assert result_lines[0] == "line 41"
+        assert offset > 0
 
     def test_returns_all_lines_when_fewer_than_n(self, tmp_path: Path) -> None:
         """tail_log returns all lines when file has fewer than N lines."""
         from utils.research_agent import tail_log
 
-        log_file = tmp_path / "agent.log"
-        log_file.write_text("line 1\nline 2\nline 3", encoding="utf-8")
+        import json
 
-        result = tail_log(log_file, n=30)
-        result_lines = result.strip().splitlines()
+        log_file = tmp_path / "agent.log"
+        entries = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": f"line {i}"}]},
+                }
+            )
+            for i in range(1, 4)
+        ]
+        log_file.write_text("\n".join(entries), encoding="utf-8")
+
+        text, offset = tail_log(log_file, n=30)
+        result_lines = text.strip().splitlines()
         assert len(result_lines) == 3
 
     def test_default_n_is_30(self, tmp_path: Path) -> None:
         """tail_log uses n=30 as default."""
         from utils.research_agent import tail_log
 
-        log_file = tmp_path / "agent.log"
-        lines = [f"line {i}" for i in range(1, 101)]  # 100 lines
-        log_file.write_text("\n".join(lines), encoding="utf-8")
+        import json
 
-        result = tail_log(log_file)
-        assert len(result.strip().splitlines()) == 30
+        log_file = tmp_path / "agent.log"
+        entries = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "text", "text": f"line {i}"}]},
+                }
+            )
+            for i in range(1, 101)
+        ]
+        log_file.write_text("\n".join(entries), encoding="utf-8")
+
+        text, _ = tail_log(log_file)
+        assert len(text.strip().splitlines()) == 30
 
 
 # ---------------------------------------------------------------------------

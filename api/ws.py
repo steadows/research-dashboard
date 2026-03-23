@@ -1,7 +1,8 @@
 """WebSocket handler — research log streaming.
 
 Streams research agent log output to the frontend via WebSocket.
-Polls tail_log() every 2 seconds and sends JSON frames.
+Polls tail_log() every 2 seconds and sends JSON frames with parsed,
+human-readable log lines. Uses byte offsets for incremental tailing.
 Closes when the agent process exits.
 """
 
@@ -26,7 +27,7 @@ async def research_log_stream(websocket: WebSocket, key: str) -> None:
     """Stream research agent log output over WebSocket.
 
     Sends JSON frames with structure:
-        {"type": "log", "lines": "...tail output..."}
+        {"type": "log", "lines": "...parsed human-readable output..."}
         {"type": "done", "lines": "...final output..."}
         {"type": "error", "message": "..."}
 
@@ -55,15 +56,19 @@ async def research_log_stream(websocket: WebSocket, key: str) -> None:
         await websocket.close()
         return
 
+    byte_offset = 0
+
     try:
         while True:
             running = is_agent_running(pid)
-            lines = tail_log(log_file) if log_file else ""
+            lines, byte_offset = tail_log(log_file, offset=byte_offset)
 
             if running:
-                await websocket.send_json({"type": "log", "lines": lines})
+                if lines:
+                    await websocket.send_json({"type": "log", "lines": lines})
                 await asyncio.sleep(_POLL_INTERVAL_SECONDS)
             else:
+                # Process finished — send any remaining lines then close
                 await websocket.send_json({"type": "done", "lines": lines})
                 break
     except Exception as exc:

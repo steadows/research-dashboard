@@ -1,16 +1,19 @@
 """Pydantic request/response models for FastAPI mutation endpoints."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+# Exhaustive set of allowed status values
+StatusValue = Literal["new", "reviewed", "skipped", "dismissed", "queued", "workbench"]
 
 
 class StatusUpdateRequest(BaseModel):
     """Request body for POST/PATCH /api/status/{key}."""
 
-    status: str = Field(
+    status: StatusValue = Field(
         ...,
-        min_length=1,
-        max_length=50,
-        description="New status value (e.g. 'new', 'reviewed', 'skipped').",
+        description="New status value (must be one of: new, reviewed, skipped, dismissed, queued, workbench).",
     )
 
 

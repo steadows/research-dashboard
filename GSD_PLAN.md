@@ -2288,12 +2288,12 @@ Requires Sessions 21 AND 22 complete.
 - [x] Wire Refresh button (`POST /api/instagram/refresh` with progress indicator)
 - [x] All from the Agentic Hub tab built in Session 21
 
-### [23e] Quality Gate [ ]
+### [23e] Quality Gate [x]
 
-- [ ] `pnpm build` passes
-- [ ] Visual match against workbench + agentic hub screenshots
-- [ ] WebSocket log streaming works with real research agent
-- [ ] **Verify**: Run `/steadows-verify`
+- [x] `pnpm build` passes
+- [x] Visual match against workbench + agentic hub screenshots
+- [x] WebSocket log streaming works with real research agent
+- [x] **Verify**: Run `/steadows-verify`
 
 ### [23f] Commit [ ]
 
@@ -2311,7 +2311,7 @@ Requires Session 23 complete.
 **Scope:** Full E2E test suite, frontend unit tests, visual polish pass, accessibility.
 
 **Skills (MANDATORY reads):**
-- `docs/designs/DESIGN_SYSTEM.md` — audit every rule: corner brackets (not borders), 0px border-radius, glow (not shadow), correct fonts
+- `docs/designs/DESIGN_SYSTEM.md` — audit every rule:  0px border-radius, glow (not shadow), correct fonts
 - `framer-motion/SKILL.md` — performance audit (lazy imports, Suspense, reduced motion)
 - `ui-ux-pro-max/SKILL.md` — accessibility checklist, responsive patterns, WCAG audit guide
 - `e2e-testing/SKILL.md` — Playwright patterns, Page Object Model, CI integration

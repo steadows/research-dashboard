@@ -16,15 +16,6 @@ const ResearchArchiveTab = lazy(() =>
 const ToolsRadarTab = lazy(() =>
   import("./ToolsRadarTab").then((m) => ({ default: m.ToolsRadarTab }))
 );
-const AISignalTab = lazy(() =>
-  import("./AISignalTab").then((m) => ({ default: m.AISignalTab }))
-);
-const GraphInsightsTab = lazy(() =>
-  import("./GraphInsightsTab").then((m) => ({ default: m.GraphInsightsTab }))
-);
-const AgenticHubTab = lazy(() =>
-  import("./AgenticHubTab").then((m) => ({ default: m.AgenticHubTab }))
-);
 
 function TabFallback() {
   return (
@@ -51,9 +42,6 @@ export function DashboardView() {
           {activeTab === "blog-queue" && <BlogQueueTab />}
           {activeTab === "research-archive" && <ResearchArchiveTab />}
           {activeTab === "tools-radar" && <ToolsRadarTab />}
-          {activeTab === "ai-signal" && <AISignalTab />}
-          {activeTab === "graph-insights" && <GraphInsightsTab />}
-          {activeTab === "agentic-hub" && <AgenticHubTab />}
         </Suspense>
       </div>
     </div>

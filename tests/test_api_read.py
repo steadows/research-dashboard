@@ -362,7 +362,7 @@ def client() -> TestClient:
             )
         )
         p(patch("utils.research_agent.is_agent_running", return_value=False))
-        p(patch("utils.research_agent.tail_log", return_value=""))
+        p(patch("utils.research_agent.tail_log", return_value=("", 0)))
         p(
             patch(
                 "api.routers.research.launch_research_agent",
@@ -370,7 +370,7 @@ def client() -> TestClient:
             )
         )
         p(patch("api.routers.research.is_agent_running", return_value=False))
-        p(patch("api.routers.research.tail_log", return_value=""))
+        p(patch("api.routers.research.tail_log", return_value=("", 0)))
         p(
             patch(
                 "api.routers.research.get_workbench_item",
@@ -407,7 +407,7 @@ def client() -> TestClient:
             )
         )
         p(patch("api.ws.is_agent_running", return_value=False))
-        p(patch("api.ws.tail_log", return_value=""))
+        p(patch("api.ws.tail_log", return_value=("", 0)))
 
         # Clear graph cache to prevent stale data between tests
         from api.routers.graph import _graph_cache
@@ -458,7 +458,7 @@ class TestProjectsRouter:
         data = resp.json()
         assert isinstance(data, list)
         assert len(data) == 2
-        assert data[0]["match_type"] == "explicit"
+        assert data[0]["relevance_score"] == 100  # confidence 1.0 → 100
 
     def test_project_index_empty(self, client: TestClient) -> None:
         """GET /api/project-index/{project} returns empty list for unknown project."""
@@ -597,9 +597,11 @@ class TestGraphRouter:
         resp = client.get("/api/graph/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert "node_count" in data
-        assert "edge_count" in data
-        assert data["node_count"] == 3
+        assert "total_nodes" in data
+        assert "total_edges" in data
+        assert data["total_nodes"] == 3
+        assert "avg_degree" in data
+        assert "density" in data
 
     def test_graph_project_context(self, client: TestClient) -> None:
         """GET /api/graph/{project} returns project context."""

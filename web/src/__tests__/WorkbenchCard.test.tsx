@@ -16,6 +16,10 @@ function makeEntry(overrides: Partial<WorkbenchEntry> = {}): WorkbenchEntry {
     verdict: null,
     pid: null,
     log_file: null,
+    category: "IDE",
+    source: "TLDR 2026-03-07",
+    tags: "",
+    url: "",
     ...overrides,
   };
 }

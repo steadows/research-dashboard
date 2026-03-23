@@ -6,8 +6,10 @@ import type {
   ToolItem,
   MethodItem,
   ReportItem,
+  PaperItem,
   GraphHealth,
   InstagramPost,
+  HomeSummary,
 } from "./types";
 
 /** Dashboard stats — metric card counts */
@@ -33,6 +35,16 @@ export function useMethods() {
   return useSWR<MethodItem[]>("/methods", defaultSWRConfig);
 }
 
+/** Home summary — cross-source intel brief */
+export function useHomeSummary() {
+  return useSWR<HomeSummary>("/dashboard/home-summary", defaultSWRConfig);
+}
+
+/** Papers — individual papers from JournalClub reports */
+export function usePapers() {
+  return useSWR<PaperItem[]>("/papers", defaultSWRConfig);
+}
+
 /** Reports — JournalClub + TLDR archives */
 export function useReports() {
   return useSWR<ReportItem[]>("/reports", defaultSWRConfig);
@@ -46,4 +58,21 @@ export function useGraphHealth() {
 /** Instagram / Agentic Hub feed */
 export function useInstagramFeed() {
   return useSWR<InstagramPost[]>("/instagram/feed", defaultSWRConfig);
+}
+
+/** Graph communities */
+export function useGraphCommunities() {
+  return useSWR<string[][]>("/graph/communities", defaultSWRConfig);
+}
+
+/** Hub notes — top PageRank nodes */
+export interface HubNote {
+  name: string;
+  pagerank: number;
+  in_degree: number;
+  betweenness: number;
+}
+
+export function useHubNotes() {
+  return useSWR<HubNote[]>("/graph/hub-notes", defaultSWRConfig);
 }

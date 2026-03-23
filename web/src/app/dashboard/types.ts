@@ -13,7 +13,10 @@ export interface BlogItem {
   category?: string;
   tags?: string[];
   source?: string;
-  notes?: string;
+  hook?: string;
+  source_paper?: string;
+  projects?: string[];
+  added?: string;
 }
 
 export interface ToolItem {
@@ -23,6 +26,7 @@ export interface ToolItem {
   source?: string;
   url?: string;
   notes?: string;
+  summary?: string;
   tags?: string[];
 }
 
@@ -42,6 +46,7 @@ export interface ReportItem {
   source: string;
   type: "journalclub" | "tldr";
   highlights?: string[];
+  summary?: string;
   file_path?: string;
 }
 
@@ -73,22 +78,38 @@ export interface WorkbenchItem {
   source?: string;
 }
 
+export interface PaperItem {
+  title: string;
+  report_date: string;
+  authors: string | null;
+  year: string | null;
+  link: string | null;
+  snippet: string | null;
+  synthesis: string | null;
+  relevance: string | null;
+  relevance_level: "High" | "Medium" | "Low" | "None" | null;
+  blog_potential: string | null;
+  project_applications: string[];
+}
+
+export interface HomeSummary {
+  top_picks: string[];
+  top_tools: { name: string; category: string }[];
+  blog_ideas: { title: string; status: string }[];
+  ai_signal: string | null;
+  ai_signal_source: string | null;
+}
+
 /** Tab identifiers for the dashboard */
 export type DashboardTab =
   | "home"
   | "blog-queue"
   | "tools-radar"
-  | "research-archive"
-  | "ai-signal"
-  | "graph-insights"
-  | "agentic-hub";
+  | "research-archive";
 
 export const DASHBOARD_TABS: { id: DashboardTab; label: string }[] = [
   { id: "home", label: "HOME" },
   { id: "blog-queue", label: "BLOG QUEUE" },
   { id: "tools-radar", label: "TOOLS RADAR" },
   { id: "research-archive", label: "RESEARCH ARCHIVE" },
-  { id: "ai-signal", label: "AI SIGNAL" },
-  { id: "graph-insights", label: "GRAPH INSIGHTS" },
-  { id: "agentic-hub", label: "AGENTIC HUB" },
 ];

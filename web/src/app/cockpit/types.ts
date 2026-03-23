@@ -8,6 +8,7 @@ export interface Project {
   domain: string;
   tech: string[];
   overview: string;
+  source_dir?: string;
 }
 
 export interface ProjectItem {
@@ -15,7 +16,7 @@ export interface ProjectItem {
   source: string;
   type: "method" | "tool" | "blog";
   status: string;
-  discovery_source: string;
+  discovery_source?: string;
   relevance_score?: number;
 }
 

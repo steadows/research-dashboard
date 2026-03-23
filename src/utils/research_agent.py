@@ -434,7 +434,14 @@ def is_retryable_failure(log_file: Path) -> bool:
     Returns:
         True if the failure appears transient and worth retrying.
     """
-    tail = tail_log(log_file, n=20)
+    if not log_file.is_file():
+        return False
+    try:
+        raw = log_file.read_text(encoding="utf-8", errors="replace")
+        # Check the last ~4KB for transient error markers
+        tail = raw[-4096:]
+    except OSError:
+        return False
     return any(
         marker in tail
         for marker in ("529", "Overloaded", "500", "Internal server error")
@@ -601,21 +608,69 @@ def is_agent_running(pid: int) -> bool:
         return True
 
 
-def tail_log(log_file: Path, n: int = 30) -> str:
-    """Return the last N lines from a log file.
+def tail_log(log_file: Path, n: int = 30, *, offset: int = 0) -> tuple[str, int]:
+    """Return human-readable lines from a Claude JSON-stream log file.
+
+    Parses the JSON stream format and extracts meaningful events:
+    - Assistant text responses
+    - Tool use calls (name + truncated input)
+    - Errors
 
     Args:
         log_file: Path to the log file.
-        n: Number of lines to return (default 30).
+        n: Max number of display lines to return.
+        offset: Byte offset to start reading from (for incremental tailing).
 
     Returns:
-        Last N lines joined as a string, or empty string if file missing.
+        Tuple of (display text, new byte offset).
     """
     if not log_file.is_file():
-        return ""
+        return "", 0
 
-    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    return "\n".join(lines[-n:])
+    content = log_file.read_text(encoding="utf-8", errors="replace")
+    new_offset = len(content.encode("utf-8"))
+
+    # Only process new content
+    if offset > 0:
+        content = content.encode("utf-8")[offset:].decode("utf-8", errors="replace")
+
+    display_lines: list[str] = []
+    for raw_line in content.splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            entry = json.loads(raw_line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        msg_type = entry.get("type", "")
+
+        if msg_type == "assistant":
+            # Extract text from assistant message content
+            message = entry.get("message", {})
+            for block in message.get("content", []):
+                if block.get("type") == "text":
+                    text = block["text"].strip()
+                    if text:
+                        # Take first 200 chars to keep log readable
+                        preview = text[:200] + ("..." if len(text) > 200 else "")
+                        display_lines.append(preview)
+                elif block.get("type") == "tool_use":
+                    name = block.get("name", "unknown")
+                    display_lines.append(f"[TOOL] {name}")
+
+        elif msg_type == "tool_use":
+            name = entry.get("name", "unknown")
+            display_lines.append(f"[TOOL] {name}")
+
+        elif msg_type == "result":
+            # Final result
+            result = entry.get("result", "")
+            if result:
+                preview = result[:200] + ("..." if len(result) > 200 else "")
+                display_lines.append(f"[RESULT] {preview}")
+
+    return "\n".join(display_lines[-n:]), new_offset
 
 
 def parse_research_output(research_md: Path) -> dict[str, Any]:

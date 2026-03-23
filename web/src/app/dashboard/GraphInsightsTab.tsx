@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { DataReadout } from "@/components/ui/data-readout";
-import { useGraphHealth } from "./hooks";
+import { useGraphHealth, useGraphCommunities, useHubNotes } from "./hooks";
 import { Skeleton } from "./Skeleton";
 
 /**
@@ -10,6 +11,11 @@ import { Skeleton } from "./Skeleton";
  */
 export function GraphInsightsTab() {
   const { data, isLoading } = useGraphHealth();
+  const { data: communities } = useGraphCommunities();
+  const { data: hubNotes } = useHubNotes();
+  const [expandedCommunity, setExpandedCommunity] = useState<number | null>(null);
+
+  const filteredCommunities = communities?.filter((c) => c.length >= 3) ?? [];
 
   return (
     <div className="space-y-6">
@@ -54,21 +60,93 @@ export function GraphInsightsTab() {
             </div>
           </div>
 
-          {/* Graph visualization placeholder */}
-          <div className="border border-outline-variant/20 bg-bg-surface p-6 mt-4">
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center space-y-2">
-                <div className="flex items-center justify-center">
-                  <svg className="h-10 w-10 text-accent-cyan/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M3 20.25h18M3.75 3v16.5h16.5" />
-                  </svg>
-                </div>
-                <p className="font-mono text-[10px] text-accent-cyan/40 uppercase tracking-widest">
-                  D3 Graph Visualization — Session 22
-                </p>
+          {/* Hub notes table */}
+          {hubNotes && hubNotes.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="font-mono text-[10px] text-outline uppercase tracking-widest mb-3">
+                HUB NOTES — TOP {hubNotes.length} BY PAGERANK
+              </p>
+              <div className="bg-bg-surface border border-outline-variant/20 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-outline-variant/20 text-[9px] font-mono uppercase tracking-widest text-outline">
+                      <th className="text-left px-4 py-2">#</th>
+                      <th className="text-left px-4 py-2">Note</th>
+                      <th className="text-right px-4 py-2">PageRank</th>
+                      <th className="text-right px-4 py-2">In-Degree</th>
+                      <th className="text-right px-4 py-2">Betweenness</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hubNotes.map((node, i) => (
+                      <tr
+                        key={node.name}
+                        className="border-b border-outline-variant/10 hover:bg-surface-high/30 transition-colors"
+                      >
+                        <td className="px-4 py-2 font-mono text-[10px] text-accent-cyan">
+                          {String(i + 1).padStart(2, "0")}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-xs text-text-primary">
+                          {node.name}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[10px] text-accent-cyan text-right">
+                          {node.pagerank.toFixed(4)}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[10px] text-text-secondary text-right">
+                          {node.in_degree}
+                        </td>
+                        <td className="px-4 py-2 font-mono text-[10px] text-text-secondary text-right">
+                          {node.betweenness.toFixed(4)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Communities section */}
+          {filteredCommunities.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <p className="font-mono text-[10px] text-outline uppercase tracking-widest mb-3">
+                COMMUNITIES ({filteredCommunities.length})
+              </p>
+              {filteredCommunities.map((members, idx) => {
+                const isOpen = expandedCommunity === idx;
+                return (
+                  <div
+                    key={idx}
+                    className="bg-bg-surface border border-outline-variant/20"
+                  >
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                      onClick={() => setExpandedCommunity(isOpen ? null : idx)}
+                    >
+                      <span className="font-mono text-xs text-purple-400 font-bold">
+                        Community {idx + 1}
+                      </span>
+                      <span className="font-mono text-[10px] text-outline">
+                        {members.length} members {isOpen ? "▲" : "▼"}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="px-4 pb-3 flex flex-wrap gap-2">
+                        {members.map((member, mi) => (
+                          <span
+                            key={mi}
+                            className="font-mono text-[10px] bg-purple-400/10 text-purple-300 border border-purple-400/20 px-2 py-0.5"
+                          >
+                            {member}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>

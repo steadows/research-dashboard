@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { useSWRConfig } from "swr";
+import { useSWRConfig, mutate as swrMutate } from "swr";
 import { GlowButton } from "@/components/ui/glow-button";
 import { DataReadout } from "@/components/ui/data-readout";
 import { apiMutate } from "@/lib/api";
@@ -17,6 +17,20 @@ function IntelCard({ post }: { post: InstagramPost }) {
   const [showSummary, setShowSummary] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [dismissing, setDismissing] = useState(false);
+
+  const handleDismiss = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (dismissing) return;
+    setDismissing(true);
+    try {
+      await apiMutate(`/status/instagram::${post.title}`, { body: { status: "dismissed" } });
+      await swrMutate("/instagram/feed");
+    } catch (err) {
+      console.error("Dismiss failed:", err);
+      setDismissing(false);
+    }
+  }, [post.title, dismissing]);
 
   const handleSummarize = useCallback(async () => {
     if (summarizing) return;
@@ -55,6 +69,7 @@ function IntelCard({ post }: { post: InstagramPost }) {
           },
         },
       });
+      await swrMutate("/workbench");
       setWbStatus("sent");
       setTimeout(() => setWbStatus("idle"), 2000);
     } catch (err) {
@@ -65,7 +80,7 @@ function IntelCard({ post }: { post: InstagramPost }) {
 
   return (
     <div
-      className={`relative bg-bg-surface border-l-4 border-indigo p-5 flex flex-col gap-5 group hover:bg-surface-high/50 transition-all duration-150 ${
+      className={`relative bg-bg-surface border-l-4 border-indigo p-5 flex flex-col gap-5 group hover:bg-surface-high/50 hover:box-glow-indigo transition-all duration-200 ${
         isAnalyzed ? "ring-1 ring-accent-cyan/30" : ""
       }`}
     >
@@ -146,6 +161,14 @@ function IntelCard({ post }: { post: InstagramPost }) {
 
       {/* Actions */}
       <div className="mt-auto pt-4 flex items-center gap-3">
+        <GlowButton
+          variant="secondary"
+          className="py-2 text-[10px] px-4"
+          onClick={handleDismiss}
+          disabled={dismissing}
+        >
+          {dismissing ? "..." : "DISMISS"}
+        </GlowButton>
         {isAnalyzed || summary ? (
           <GlowButton
             variant="primary"

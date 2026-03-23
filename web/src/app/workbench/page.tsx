@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useWorkbench, updateWorkbenchStatus } from "./hooks";
+import { apiMutate } from "@/lib/api";
+import {
+  useWorkbench,
+  launchResearch,
+  updateWorkbenchStatus,
+  removeFromWorkbench,
+} from "./hooks";
 import { KanbanColumn } from "./KanbanColumn";
 import { WorkbenchCard } from "./WorkbenchCard";
 import { ResearchLog } from "./ResearchLog";
@@ -18,7 +24,8 @@ export default function WorkbenchPage() {
 
   const handleStartResearch = useCallback(
     async (key: string) => {
-      await updateWorkbenchStatus(key, "researching");
+      // Launch the actual research agent, then update status
+      await launchResearch(key);
       // Auto-expand the log for the item that just started
       setExpandedLogs((prev) => new Set([...prev, key]));
       mutate();
@@ -39,7 +46,9 @@ export default function WorkbenchPage() {
   }, []);
 
   const handleResearchComplete = useCallback(
-    (key: string) => {
+    async (key: string) => {
+      // Transition item to completed status
+      await updateWorkbenchStatus(key, "completed");
       // Refetch workbench data — card will move to completed column
       mutate();
       // Collapse the log after completion
@@ -52,9 +61,35 @@ export default function WorkbenchPage() {
     [mutate]
   );
 
+  const handleRemove = useCallback(
+    async (key: string) => {
+      await removeFromWorkbench(key);
+      mutate();
+    },
+    [mutate]
+  );
+
   const handleViewReport = useCallback((key: string) => {
-    console.info(`View report for: ${key}`);
+    const reportUrl = `/api/research/report/${encodeURIComponent(key)}`;
+    window.open(reportUrl, "_blank", "noopener,noreferrer");
   }, []);
+
+  const handlePublishVault = useCallback(
+    async (key: string) => {
+      try {
+        const result = await apiMutate<{ obsidian_uri: string; vault_note: string }>(
+          `/research/publish-vault/${encodeURIComponent(key)}`,
+          { method: "POST" }
+        );
+        // Open in Obsidian via URI scheme
+        window.open(result.obsidian_uri, "_self");
+        mutate();
+      } catch (err) {
+        console.error("Publish to vault failed:", err);
+      }
+    },
+    [mutate]
+  );
 
   return (
     <div className="pb-8">
@@ -83,6 +118,23 @@ export default function WorkbenchPage() {
       {/* Loading skeleton */}
       {isLoading && <WorkbenchSkeleton />}
 
+      {/* Empty state */}
+      {!isLoading &&
+        !error &&
+        columns.queued.length === 0 &&
+        columns.researching.length === 0 &&
+        columns.completed.length === 0 && (
+          <div className="border border-outline-variant/30 bg-bg-surface p-8 text-center">
+            <p className="font-mono text-sm text-text-secondary mb-2">
+              NO ITEMS IN PIPELINE
+            </p>
+            <p className="font-mono text-xs text-text-muted">
+              Send items from Tools Radar, AI Signal, or Agentic Hub to start
+              researching.
+            </p>
+          </div>
+        )}
+
       {/* Kanban board */}
       {!isLoading && (
         <div className="grid grid-cols-1 gap-6 items-start lg:grid-cols-3">
@@ -94,12 +146,18 @@ export default function WorkbenchPage() {
                 count={columns[status].length}
               >
                 {columns[status].map((entry) => (
-                  <div key={entry.key} className="flex flex-col gap-3" role="listitem">
+                  <div
+                    key={entry.key}
+                    className="flex flex-col gap-3"
+                    role="listitem"
+                  >
                     <WorkbenchCard
                       entry={entry}
                       onStartResearch={handleStartResearch}
                       onViewLog={handleViewLog}
                       onViewReport={handleViewReport}
+                      onPublishVault={handlePublishVault}
+                      onRemove={handleRemove}
                     />
                     {entry.status === "researching" && (
                       <ResearchLog

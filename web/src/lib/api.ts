@@ -6,11 +6,10 @@ import type { Fetcher, SWRConfiguration } from "swr";
 /** HTTP API uses same-origin paths (proxied via next.config rewrites) */
 const API_BASE = "/api";
 
-/** WebSocket URL from env — direct connection in dev, reverse proxy in prod */
+/** WebSocket URL — connects directly to FastAPI backend (Next.js rewrites don't support WS upgrades) */
 const WS_BASE =
   typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_WS_URL ??
-      `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+    ? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000"
     : "";
 
 // ─── SWR Fetcher ────────────────────────────────────────────────────────────

@@ -54,3 +54,17 @@ export async function updateWorkbenchStatus(
     body: { updates: { status } },
   });
 }
+
+/** Launch the research agent for a workbench item via POST */
+export async function launchResearch(key: string): Promise<void> {
+  await apiMutate(`/research/launch/${encodeURIComponent(key)}`, {
+    method: "POST",
+  });
+}
+
+/** Remove an item from the workbench (restores previous status) */
+export async function removeFromWorkbench(key: string): Promise<void> {
+  await apiMutate(`/workbench/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+  });
+}

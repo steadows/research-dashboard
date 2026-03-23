@@ -21,11 +21,7 @@ def _sample_instagram_post(
     shortcode: str = "ABC123",
     name: str = "How to Build RAG Pipelines",
 ) -> dict[str, Any]:
-    """Return a minimal instagram post dict for workbench testing.
-
-    Note: name is the human-readable title (not shortcode).
-    The identity model preserves this title for display while keying on shortcode.
-    """
+    """Return a minimal instagram post dict for workbench testing."""
     return {
         "name": name,
         "account": "hubaborern",
@@ -54,20 +50,20 @@ class TestInstagramAddToWorkbench:
         post = _sample_instagram_post()
         add_to_workbench(post, workbench_file=wb_file)
 
-        entry = get_workbench_item("instagram::ABC123", wb_file)
+        entry = get_workbench_item("instagram::How to Build RAG Pipelines", wb_file)
         assert entry is not None
         assert entry["source_type"] == "instagram"
 
-    def test_uses_make_item_key_with_shortcode(self, tmp_path: Path) -> None:
-        """Workbench key is make_item_key('instagram', shortcode)."""
+    def test_uses_make_item_key_with_name(self, tmp_path: Path) -> None:
+        """Workbench key is make_item_key('instagram', name)."""
         wb_file = tmp_path / "workbench.json"
         post = _sample_instagram_post()
-        expected_key = make_item_key("instagram", post["shortcode"])
+        expected_key = make_item_key("instagram", post["name"])
         add_to_workbench(post, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
         assert expected_key in items
-        assert expected_key == "instagram::ABC123"
+        assert expected_key == "instagram::How to Build RAG Pipelines"
 
 
 # ---------------------------------------------------------------------------
@@ -85,12 +81,12 @@ class TestInstagramUpdatePreservesTranscript:
         add_to_workbench(post, workbench_file=wb_file)
 
         update_workbench_item(
-            "instagram::ABC123",
+            "instagram::How to Build RAG Pipelines",
             {"status": "researching"},
             wb_file,
         )
 
-        entry = get_workbench_item("instagram::ABC123", wb_file)
+        entry = get_workbench_item("instagram::How to Build RAG Pipelines", wb_file)
         assert entry is not None
         assert entry["item"]["transcript"] == post["transcript"]
 
@@ -100,9 +96,11 @@ class TestInstagramUpdatePreservesTranscript:
         post = _sample_instagram_post()
         add_to_workbench(post, workbench_file=wb_file)
 
-        update_workbench_item("instagram::ABC123", {"status": "researched"}, wb_file)
+        update_workbench_item(
+            "instagram::How to Build RAG Pipelines", {"status": "researched"}, wb_file
+        )
 
-        entry = get_workbench_item("instagram::ABC123", wb_file)
+        entry = get_workbench_item("instagram::How to Build RAG Pipelines", wb_file)
         assert entry is not None
         assert entry["item"]["caption"] == post["caption"]
 
@@ -222,68 +220,55 @@ class TestResearchAgentTranscriptContext:
 
 
 class TestInstagramIdentityModel:
-    """Instagram entries preserve name as title while keying on shortcode."""
+    """Instagram entries key on name (title) like all other source types."""
 
     def test_title_preserved_after_add(self, tmp_path: Path) -> None:
-        """item['name'] is the human-readable title, not the shortcode."""
+        """item['name'] is the human-readable title used as the key."""
         wb_file = tmp_path / "workbench.json"
         post = _sample_instagram_post(shortcode="XYZ789", name="Deep Dive into LoRA")
         add_to_workbench(post, workbench_file=wb_file)
 
-        key = make_item_key("instagram", "XYZ789")
+        key = make_item_key("instagram", "Deep Dive into LoRA")
         entry = get_workbench_item(key, wb_file)
         assert entry is not None
         assert entry["item"]["name"] == "Deep Dive into LoRA"
 
-    def test_key_resolves_from_shortcode(self, tmp_path: Path) -> None:
-        """Workbench key and source_item_id resolve from shortcode, not title."""
+    def test_key_resolves_from_name(self, tmp_path: Path) -> None:
+        """Workbench key resolves from name (title), not shortcode."""
         wb_file = tmp_path / "workbench.json"
         post = _sample_instagram_post(shortcode="QRS456", name="My Great Post")
         add_to_workbench(post, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
-        expected_key = make_item_key("instagram", "QRS456")
+        expected_key = make_item_key("instagram", "My Great Post")
         assert expected_key in items
-        assert expected_key == "instagram::QRS456"
+        assert expected_key == "instagram::My Great Post"
 
-    def test_duplicate_add_noop_for_same_shortcode(self, tmp_path: Path) -> None:
-        """Adding the same shortcode twice is a no-op regardless of title."""
+    def test_duplicate_add_noop_for_same_name(self, tmp_path: Path) -> None:
+        """Adding the same name twice is a no-op."""
         wb_file = tmp_path / "workbench.json"
         post1 = _sample_instagram_post(shortcode="DUP001", name="First Title")
-        post2 = _sample_instagram_post(shortcode="DUP001", name="Different Title")
+        post2 = _sample_instagram_post(shortcode="DUP002", name="First Title")
         add_to_workbench(post1, workbench_file=wb_file)
         add_to_workbench(post2, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
-        key = make_item_key("instagram", "DUP001")
+        key = make_item_key("instagram", "First Title")
         assert key in items
-        # Only one entry, first title wins
         assert items[key]["item"]["name"] == "First Title"
         assert len([k for k in items if k.startswith("instagram::")]) == 1
 
-    def test_missing_shortcode_raises_valueerror(self, tmp_path: Path) -> None:
-        """Instagram item with empty shortcode raises ValueError."""
-        import pytest
-
+    def test_different_titles_separate_entries(self, tmp_path: Path) -> None:
+        """Two posts with different titles persist as separate entries."""
         wb_file = tmp_path / "workbench.json"
-        post = _sample_instagram_post()
-        post["shortcode"] = ""
-        with pytest.raises(ValueError, match="missing shortcode"):
-            add_to_workbench(post, workbench_file=wb_file)
-
-    def test_different_shortcodes_same_title_separate_entries(
-        self, tmp_path: Path
-    ) -> None:
-        """Two posts with identical titles but different shortcodes persist separately."""
-        wb_file = tmp_path / "workbench.json"
-        post1 = _sample_instagram_post(shortcode="UNIQ01", name="Same Title")
-        post2 = _sample_instagram_post(shortcode="UNIQ02", name="Same Title")
+        post1 = _sample_instagram_post(shortcode="UNIQ01", name="Title A")
+        post2 = _sample_instagram_post(shortcode="UNIQ02", name="Title B")
         add_to_workbench(post1, workbench_file=wb_file)
         add_to_workbench(post2, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
-        assert make_item_key("instagram", "UNIQ01") in items
-        assert make_item_key("instagram", "UNIQ02") in items
+        assert make_item_key("instagram", "Title A") in items
+        assert make_item_key("instagram", "Title B") in items
         assert len([k for k in items if k.startswith("instagram::")]) == 2
 
 

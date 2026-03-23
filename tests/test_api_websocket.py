@@ -57,9 +57,10 @@ def _apply_patches(stack: ExitStack) -> None:
 
     # research agent — running first call, then exits
     p(patch("utils.research_agent.is_agent_running", side_effect=[True, False]))
-    p(patch("utils.research_agent.tail_log", return_value="\n".join(_LOG_LINES)))
+    _tail_return = ("\n".join(_LOG_LINES), 100)
+    p(patch("utils.research_agent.tail_log", return_value=_tail_return))
     p(patch("api.ws.is_agent_running", side_effect=[True, False]))
-    p(patch("api.ws.tail_log", return_value="\n".join(_LOG_LINES)))
+    p(patch("api.ws.tail_log", return_value=_tail_return))
 
     # parser stubs
     p(patch("utils.vault_parser.parse_projects", return_value=[]))

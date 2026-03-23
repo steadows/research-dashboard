@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { mutate as swrMutate } from "swr";
 import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { GlowButton } from "@/components/ui/glow-button";
@@ -12,7 +13,21 @@ import type { ToolItem } from "./types";
 function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
   const [hovered, setHovered] = useState(false);
   const [wbStatus, setWbStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [dismissing, setDismissing] = useState(false);
+  const [lazySummary, setLazySummary] = useState<string | null>(null);
   const reduceMotion = useReducedMotion();
+
+  // Lazily fetch summary from Haiku if not cached
+  useEffect(() => {
+    if (tool.summary || lazySummary) return;
+    let cancelled = false;
+    apiMutate<{ summary: string }>("/tools/summarize", { body: { name: tool.name } })
+      .then((res) => { if (!cancelled) setLazySummary(res.summary); })
+      .catch((err) => console.error("Tool summary failed:", err));
+    return () => { cancelled = true; };
+  }, [tool.name, tool.summary, lazySummary]);
+
+  const displaySummary = tool.summary || lazySummary;
 
   const dotColor =
     tool.status === "offline"
@@ -20,6 +35,19 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
       : tool.source === "tldr"
         ? "bg-accent-amber shadow-[0_0_5px_#ffbf00]"
         : "bg-accent-green shadow-[0_0_5px_#39ff14]";
+
+  const handleDismiss = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (dismissing) return;
+    setDismissing(true);
+    try {
+      await apiMutate(`/status/tool::${tool.name}`, { body: { status: "dismissed" } });
+      await swrMutate("/tools");
+    } catch (err) {
+      console.error("Dismiss failed:", err);
+      setDismissing(false);
+    }
+  }, [tool.name, dismissing]);
 
   const handleWorkbench = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -39,6 +67,7 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
           },
         },
       });
+      await swrMutate("/workbench");
       setWbStatus("sent");
       setTimeout(() => setWbStatus("idle"), 2000);
     } catch (err) {
@@ -94,9 +123,9 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
         </div>
       )}
 
-      {tool.notes && (
+      {(displaySummary || tool.notes) && (
         <p className="font-mono text-[11px] text-text-secondary mt-3 leading-relaxed">
-          {tool.notes}
+          {displaySummary || tool.notes}
         </p>
       )}
 
@@ -115,7 +144,7 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
             className="overflow-hidden"
           >
             <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4">
-              {tool.source && (
+              {(tool.source || tool.url) && (
                 <m.div
                   initial={{ x: -10 }}
                   animate={{ x: 0 }}
@@ -124,27 +153,22 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
                   <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
                     Source
                   </p>
-                  <p className="font-mono text-[11px] text-accent-cyan/70">{tool.source}</p>
-                </m.div>
-              )}
-
-              {tool.url && (
-                <m.div
-                  initial={{ x: -10 }}
-                  animate={{ x: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25, delay: 0.06 }}
-                >
-                  <p className="text-[10px] font-headline font-bold text-text-secondary uppercase tracking-[0.2em] mb-1">
-                    URL
-                  </p>
-                  <a
-                    href={tool.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[11px] text-accent-cyan hover:underline"
-                  >
-                    {tool.url}
-                  </a>
+                  {tool.url ? (
+                    <a
+                      href={tool.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 font-mono text-[11px] text-accent-cyan hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {tool.source || tool.url}
+                      <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-4.5-6H21m0 0v7.5m0-7.5l-9 9" />
+                      </svg>
+                    </a>
+                  ) : (
+                    <p className="font-mono text-[11px] text-accent-cyan/70">{tool.source}</p>
+                  )}
                 </m.div>
               )}
 
@@ -162,6 +186,14 @@ function ToolCard({ tool, index }: { tool: ToolItem; index: number }) {
                   disabled={wbStatus !== "idle"}
                 >
                   {wbStatus === "sent" ? "SENT TO WORKBENCH" : wbStatus === "sending" ? "SENDING..." : "SEND TO WORKBENCH"}
+                </GlowButton>
+                <GlowButton
+                  variant="secondary"
+                  className="py-2 text-[10px] px-4"
+                  onClick={handleDismiss}
+                  disabled={dismissing}
+                >
+                  {dismissing ? "..." : "DISMISS"}
                 </GlowButton>
               </m.div>
             </div>

@@ -7,7 +7,6 @@ import { ProjectSidebar } from "./ProjectSidebar";
 import { ProjectHeader } from "./ProjectHeader";
 import { GraphVisualization } from "./GraphVisualization";
 import { ItemsFeed } from "./ItemsFeed";
-import { AnalysisPanel } from "./AnalysisPanel";
 import type { Project, ProjectItem, GraphData } from "./types";
 
 /**
@@ -83,33 +82,33 @@ export default function CockpitPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
-            {/* Project header + actions */}
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <ProjectHeader project={activeProject} />
-              <AnalysisPanel projectName={selectedProject} />
-            </div>
+          <div className="space-y-6">
+            {/* Project header */}
+            <ProjectHeader project={activeProject} />
 
-            {/* Bento grid: Graph + Stats */}
-            <div className="grid grid-cols-12 gap-6">
-              {/* Graph visualization */}
-              <div className="col-span-12 border border-outline-variant/10 bg-bg-surface/50 p-6 lg:col-span-7">
+            {/* Items feed — primary content, above the fold */}
+            <ItemsFeed items={items ?? []} isLoading={itemsLoading} project={activeProject} />
+
+            {/* Graph + compact stats row */}
+            <div className="grid grid-cols-12 gap-4">
+              {/* Graph visualization — compact */}
+              <div className="col-span-12 border border-outline-variant/10 bg-bg-surface/50 p-4 lg:col-span-8">
                 <GraphVisualization
                   data={graphData ?? emptyGraph}
                   onNodeClick={handleNodeClick}
                 />
               </div>
 
-              {/* Stats panel */}
-              <div className="col-span-12 grid grid-cols-2 gap-4 lg:col-span-5">
-                <div className="border border-outline-variant/10 bg-bg-surface/50 p-6">
+              {/* Compact stats */}
+              <div className="col-span-12 flex flex-col gap-4 lg:col-span-4">
+                <div className="border border-outline-variant/10 bg-bg-surface/50 p-4">
                   <div className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     LINKED_ITEMS
                   </div>
-                  <div className="mt-1 font-mono text-3xl font-black text-accent-cyan">
+                  <div className="mt-1 font-mono text-2xl font-black text-accent-cyan">
                     {items?.length ?? "--"}
                   </div>
-                  <div className="mt-4 h-1 w-full bg-outline-variant/20">
+                  <div className="mt-3 h-1 w-full bg-outline-variant/20">
                     <div
                       className="h-full bg-accent-cyan transition-all"
                       style={{
@@ -121,14 +120,14 @@ export default function CockpitPage() {
                   </div>
                 </div>
 
-                <div className="border border-outline-variant/10 bg-bg-surface/50 p-6">
+                <div className="border border-outline-variant/10 bg-bg-surface/50 p-4">
                   <div className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     GRAPH_NODES
                   </div>
-                  <div className="mt-1 font-mono text-3xl font-black text-accent-green">
+                  <div className="mt-1 font-mono text-2xl font-black text-accent-green">
                     {graphData?.nodes.length ?? "--"}
                   </div>
-                  <div className="mt-4 flex gap-1">
+                  <div className="mt-3 flex gap-1">
                     {[1, 2, 3, 4].map((i) => (
                       <div
                         key={i}
@@ -141,37 +140,8 @@ export default function CockpitPage() {
                     ))}
                   </div>
                 </div>
-
-                <div className="col-span-2 flex items-center justify-between border border-purple/20 bg-purple/5 p-6">
-                  <div>
-                    <div className="font-mono text-[10px] uppercase tracking-widest text-purple">
-                      ANALYSIS_ENGINE
-                    </div>
-                    <div className="font-heading text-lg font-bold uppercase text-text-primary">
-                      {activeProject.status === "active"
-                        ? "Ready"
-                        : "Standby"}
-                    </div>
-                  </div>
-                  <svg
-                    className="h-10 w-10 text-purple/40"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"
-                    />
-                  </svg>
-                </div>
               </div>
             </div>
-
-            {/* Items feed */}
-            <ItemsFeed items={items ?? []} isLoading={itemsLoading} />
           </div>
         )}
       </div>

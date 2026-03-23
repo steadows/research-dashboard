@@ -64,10 +64,64 @@ def _get_graph_data(vault_path: str) -> dict[str, Any]:
 @router.get("/health")
 def graph_health(
     vault_path: str = Depends(get_vault_path_str),
-) -> dict[str, int]:
-    """Get vault graph health statistics."""
+) -> dict[str, Any]:
+    """Get vault graph health statistics, transformed for frontend contract.
+
+    Returns:
+        Dict with total_nodes, total_edges, connected_components,
+        orphan_nodes, avg_degree, density.
+    """
     data = _get_graph_data(vault_path)
-    return data["health"]
+    raw = data["health"]
+
+    node_count = raw.get("node_count", 0)
+    edge_count = raw.get("edge_count", 0)
+
+    avg_degree = (2.0 * edge_count / node_count) if node_count > 0 else 0.0
+    max_edges = node_count * (node_count - 1)
+    density = (edge_count / max_edges) if max_edges > 0 else 0.0
+
+    return {
+        "total_nodes": node_count,
+        "total_edges": edge_count,
+        "connected_components": raw.get("component_count", 0),
+        "orphan_nodes": raw.get("orphan_count", 0),
+        "avg_degree": round(avg_degree, 4),
+        "density": round(density, 6),
+    }
+
+
+@router.get("/hub-notes")
+def graph_hub_notes(
+    vault_path: str = Depends(get_vault_path_str),
+    limit: int = 15,
+) -> list[dict[str, Any]]:
+    """Get top hub notes ranked by PageRank.
+
+    Args:
+        vault_path: Path to the Obsidian vault.
+        limit: Maximum number of hub notes to return.
+
+    Returns:
+        List of dicts with name, pagerank, in_degree, betweenness.
+    """
+    data = _get_graph_data(vault_path)
+    metrics = data["metrics"]
+    pagerank = metrics.get("pagerank", {})
+    betweenness = metrics.get("betweenness", {})
+    in_degree = metrics.get("in_degree", {})
+
+    sorted_nodes = sorted(pagerank.items(), key=lambda x: x[1], reverse=True)
+
+    return [
+        {
+            "name": name,
+            "pagerank": round(score, 6),
+            "in_degree": in_degree.get(name, 0),
+            "betweenness": round(betweenness.get(name, 0.0), 6),
+        }
+        for name, score in sorted_nodes[:limit]
+    ]
 
 
 @router.get("/communities")

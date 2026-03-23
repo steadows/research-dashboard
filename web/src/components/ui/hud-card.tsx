@@ -26,7 +26,7 @@ export function HUDCard({
   return (
     <div
       className={cn(
-        "relative bg-bg-surface p-6 border border-accent-cyan/20 box-glow-cyan",
+        "relative bg-bg-surface p-6 border border-accent-cyan/20 box-glow-cyan transition-shadow duration-200 hover:box-glow-cyan-lg hover:border-accent-cyan/40",
         className
       )}
     >

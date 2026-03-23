@@ -173,18 +173,18 @@ class TestSummarizeButton:
 class TestWorkbenchButton:
     """Workbench button calls add_to_workbench with source_type='instagram'."""
 
-    def test_workbench_button_uses_shortcode_key(self) -> None:
-        """Workbench key uses make_item_key('instagram', shortcode)."""
+    def test_workbench_button_uses_name_key(self) -> None:
+        """Workbench key uses make_item_key('instagram', name)."""
         from utils.workbench_tracker import make_item_key
 
         post = _sample_post()
-        key = make_item_key("instagram", post["shortcode"])
-        assert key == "instagram::ABC123"
+        key = make_item_key("instagram", post["name"])
+        assert key == "instagram::Test Post Title"
 
     def test_workbench_button_disabled_when_already_in_workbench(
         self, tmp_path: Path
     ) -> None:
-        """Button disabled when post shortcode already in workbench."""
+        """Button disabled when post name already in workbench."""
         from utils.workbench_tracker import (
             add_to_workbench,
             get_workbench_items,
@@ -193,15 +193,14 @@ class TestWorkbenchButton:
 
         wb_file = tmp_path / "workbench.json"
         post = _sample_post()
-        # Session 14: pass original post (with title as name), identity model keys on shortcode
         add_to_workbench(post, workbench_file=wb_file)
 
         items = get_workbench_items(wb_file)
-        key = make_item_key("instagram", post["shortcode"])
+        key = make_item_key("instagram", post["name"])
         assert key in items
 
     def test_workbench_preserves_post_title(self, tmp_path: Path) -> None:
-        """Workbench entry keeps original title for display, not shortcode."""
+        """Workbench entry keeps original title for display."""
         from utils.workbench_tracker import (
             add_to_workbench,
             get_workbench_item,
@@ -212,7 +211,7 @@ class TestWorkbenchButton:
         post = _sample_post()
         add_to_workbench(post, workbench_file=wb_file)
 
-        key = make_item_key("instagram", post["shortcode"])
+        key = make_item_key("instagram", post["name"])
         entry = get_workbench_item(key, wb_file)
         assert entry is not None
         assert entry["item"]["name"] == post["name"]
