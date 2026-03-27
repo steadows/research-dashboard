@@ -332,9 +332,17 @@ def summarize_paper(
     tags = item.get("tags", "")
     projects = item.get("projects", [])
 
-    # Enrich with paper abstract from Semantic Scholar
-    paper_ctx = fetch_paper_context(source)
-    abstract = paper_ctx.get("abstract", "")
+    # Enrich with paper abstract — timeout to avoid blocking the request
+    import concurrent.futures
+
+    abstract = ""
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(fetch_paper_context, source)
+            paper_ctx = future.result(timeout=15)
+            abstract = paper_ctx.get("abstract", "")
+    except (concurrent.futures.TimeoutError, Exception) as exc:
+        logger.info("Paper context fetch skipped (timeout/error): %s", exc)
     abstract_block = (
         f"Abstract: {abstract}" if abstract else "Abstract: (not available)"
     )

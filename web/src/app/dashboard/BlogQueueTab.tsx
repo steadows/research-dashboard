@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { mutate as swrMutate } from "swr";
 import { AnimatePresence, m, useReducedMotion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -50,25 +50,29 @@ function BlogCard({ item, index }: { item: BlogItem; index: number }) {
   const [drafting, setDrafting] = useState(false);
   const [dismissing, setDismissing] = useState(false);
 
-  // Auto-fetch summary when card is expanded
+  // Auto-fetch summary when card is expanded.
+  // Use a ref to guard against duplicate fetches — putting `summarizing` in deps
+  // causes the cleanup to cancel the in-flight request on the re-render.
+  const fetchingRef = useRef(false);
   useEffect(() => {
-    if (!expanded || summary || summarizing) return;
-    let cancelled = false;
+    if (!expanded || summary || fetchingRef.current) return;
+    fetchingRef.current = true;
     setSummarizing(true);
     apiMutate<{ summary: string }>(
       "/blog-queue/summarize",
       { body: { item: blogItemPayload(item) } }
     )
       .then((result) => {
-        if (!cancelled) {
-          setSummary(result.summary);
-          setCached(`${cachePrefix}summary`, result.summary);
-        }
+        setSummary(stripLeadingHeading(result.summary));
+        setCached(`${cachePrefix}summary`, stripLeadingHeading(result.summary));
       })
-      .catch((err) => console.error("Summarize failed:", err))
-      .finally(() => { if (!cancelled) setSummarizing(false); });
-    return () => { cancelled = true; };
-  }, [expanded, item, summary, summarizing, cachePrefix]);
+      .catch((err) => {
+        console.error("Summarize failed:", err);
+        fetchingRef.current = false;
+      })
+      .finally(() => setSummarizing(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, summary, cachePrefix]);
 
   const handleDeepRead = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
