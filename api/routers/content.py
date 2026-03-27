@@ -156,6 +156,52 @@ def _to_method_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _extract_report_brief(report: dict[str, Any], report_type: str) -> dict[str, Any]:
+    """Extract structured brief from a single report.
+
+    Always returns a fully normalized dict with all fields present.
+    JournalClub → top_picks populated. TLDR → top_tools + ai_signal populated.
+    """
+    sections = report.get("sections", {})
+
+    top_picks: list[str] = []
+    top_tools: list[dict[str, str]] = []
+    ai_signal: str | None = None
+    ai_signal_source: str | None = None
+
+    if report_type == "journalclub":
+        picks_md = sections.get("Top Picks This Week", "") or sections.get(
+            "Top Picks", ""
+        )
+        if picks_md:
+            for line in picks_md.strip().splitlines():
+                clean = re.sub(r"^(?:\d+\.\s*|[-*]\s*)", "", line.strip()).strip()
+                if clean:
+                    top_picks.append(_strip_markdown(clean))
+
+    elif report_type == "tldr":
+        tools_md = sections.get("Tools", "") or sections.get("Tools Mentioned", "")
+        if tools_md:
+            for line in tools_md.strip().splitlines():
+                clean = line.strip().lstrip("- ").strip()
+                if clean:
+                    top_tools.append({"name": _strip_markdown(clean), "category": ""})
+
+        signal = report.get("ai_signal", "")
+        if signal:
+            signal = _strip_markdown(signal)
+            ai_signal = signal[:500] + "..." if len(signal) > 500 else signal
+            ai_signal_source = f"TLDR {report.get('date', '')}"
+
+    return {
+        "top_picks": top_picks,
+        "top_tools": top_tools,
+        "blog_ideas": [],
+        "ai_signal": ai_signal,
+        "ai_signal_source": ai_signal_source,
+    }
+
+
 def _to_report_item(report: dict[str, Any], report_type: str) -> dict[str, Any]:
     """Map parser report → frontend ReportItem contract."""
     filename = report.get("filename", "")
@@ -164,20 +210,18 @@ def _to_report_item(report: dict[str, Any], report_type: str) -> dict[str, Any]:
     type_label = "JournalClub" if report_type == "journalclub" else "TLDR"
     title = filename.replace(".md", "") if filename else f"{type_label} {date}"
 
-    # Extract highlights: first 5 non-empty section keys as summary
+    # Extract highlights: first 5 non-empty section keys as summary (legacy)
     sections = report.get("sections", {})
     highlights = [k for k in sections.keys() if k][:5]
 
-    # Build a brief summary from section content (first sentence of each section)
+    # Build a brief summary from section content (legacy)
     summary_parts: list[str] = []
     for key, body in list(sections.items())[:5]:
         if not body or not body.strip():
             continue
-        # Take first non-empty line as the excerpt
         for line in body.strip().splitlines():
             clean = line.strip().lstrip("- ").strip()
             if clean:
-                # Truncate long lines
                 summary_parts.append(clean[:120] + ("…" if len(clean) > 120 else ""))
                 break
 
@@ -188,6 +232,7 @@ def _to_report_item(report: dict[str, Any], report_type: str) -> dict[str, Any]:
         "type": report_type,
         "highlights": highlights,
         "summary": " · ".join(summary_parts) if summary_parts else None,
+        "brief": _extract_report_brief(report, report_type),
         "file_path": filename,
     }
 

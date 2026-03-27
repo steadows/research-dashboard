@@ -483,7 +483,9 @@ def summarize_instagram_post(
     """
     # Build a unique cache key from account + name (shortcode not always available
     # from frontend). Fallback chain ensures distinct keys per post.
-    unique_id = post.get("shortcode", "") or f"{post.get('account', '')}:{post.get('name', '')}"
+    unique_id = (
+        post.get("shortcode", "") or f"{post.get('account', '')}:{post.get('name', '')}"
+    )
     cache_key = _build_cache_key(unique_id, "", "ig_summary_v1")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:

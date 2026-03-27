@@ -40,12 +40,18 @@ export interface MethodItem {
   tags?: string[];
 }
 
+/** Structured brief extracted per report — same shape as HomeSummary. */
+export type ReportBrief = HomeSummary;
+
 export interface ReportItem {
   title: string;
   date: string;
   source: string;
   type: "journalclub" | "tldr";
+  brief: ReportBrief;
+  /** @deprecated Kept during additive migration — use brief instead. */
   highlights?: string[];
+  /** @deprecated Kept during additive migration — use brief instead. */
   summary?: string;
   file_path?: string;
 }

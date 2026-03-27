@@ -35,9 +35,12 @@ export function useMethods() {
   return useSWR<MethodItem[]>("/methods", defaultSWRConfig);
 }
 
-/** Home summary — cross-source intel brief */
+/** Home summary — cross-source intel brief (auto-refreshes every 60s) */
 export function useHomeSummary() {
-  return useSWR<HomeSummary>("/dashboard/home-summary", defaultSWRConfig);
+  return useSWR<HomeSummary>("/dashboard/home-summary", {
+    ...defaultSWRConfig,
+    refreshInterval: 60_000,
+  });
 }
 
 /** Papers — individual papers from JournalClub reports */
@@ -45,9 +48,12 @@ export function usePapers() {
   return useSWR<PaperItem[]>("/papers", defaultSWRConfig);
 }
 
-/** Reports — JournalClub + TLDR archives */
+/** Reports — JournalClub + TLDR archives (auto-refreshes every 60s) */
 export function useReports() {
-  return useSWR<ReportItem[]>("/reports", defaultSWRConfig);
+  return useSWR<ReportItem[]>("/reports", {
+    ...defaultSWRConfig,
+    refreshInterval: 60_000,
+  });
 }
 
 /** Graph health metrics */

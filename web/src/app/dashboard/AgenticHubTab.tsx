@@ -11,40 +11,63 @@ import type { InstagramPost } from "./types";
 
 // ─── Refresh Progress Panel ───────────────────────────────────────────────────
 
-const REFRESH_STEPS = [
-  "CONNECTING TO META CLOUD",
-  "FETCHING RECENT VIDEOS",
-  "TRANSCRIBING CONTENT",
-  "EXTRACTING KEYWORDS",
-  "WRITING VAULT NOTES",
-] as const;
-
-// Approximate ms before each step advances (total ~10s before real response)
-const STEP_DELAYS = [0, 1500, 3500, 6000, 8500];
+interface AccountJobStatus {
+  username: string;
+  status: "running" | "complete" | "error" | "idle";
+  notes_written?: number;
+  detail?: string;
+}
 
 interface RefreshStatusPanelProps {
+  targets: string[];
   active: boolean;
   result: { notes_written: number } | null;
   onDismiss: () => void;
 }
 
-function RefreshStatusPanel({ active, result, onDismiss }: RefreshStatusPanelProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+const POLL_INTERVAL_MS = 2000;
+
+function RefreshStatusPanel({ targets, active, result, onDismiss }: RefreshStatusPanelProps) {
+  const [jobs, setJobs] = useState<AccountJobStatus[]>([]);
+  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
-    if (!active) {
-      setCurrentStep(0);
-      timersRef.current.forEach(clearTimeout);
-      timersRef.current = [];
+    if (!active || targets.length === 0) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (!active) setJobs([]);
       return;
     }
-    // Schedule step advances
-    timersRef.current = STEP_DELAYS.map((delay, i) =>
-      setTimeout(() => setCurrentStep(i), delay)
-    );
-    return () => timersRef.current.forEach(clearTimeout);
-  }, [active]);
+
+    // Initialize with running status
+    setJobs(targets.map((u) => ({ username: u, status: "running" })));
+
+    const poll = async () => {
+      const results = await Promise.all(
+        targets.map(async (username): Promise<AccountJobStatus> => {
+          try {
+            const res = await fetch(`/api/instagram/refresh-status/${username}`);
+            if (!res.ok) return { username, status: "running" };
+            const data = await res.json();
+            return { username, ...data };
+          } catch {
+            return { username, status: "running" };
+          }
+        })
+      );
+      setJobs(results);
+    };
+
+    // Start polling after a short initial delay
+    const startTimeout = setTimeout(() => {
+      poll();
+      intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    }, 1000);
+
+    return () => {
+      clearTimeout(startTimeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [active, targets]);
 
   if (!active && !result) return null;
 
@@ -69,48 +92,49 @@ function RefreshStatusPanel({ active, result, onDismiss }: RefreshStatusPanelPro
     );
   }
 
+  const completed = jobs.filter((j) => j.status === "complete" || j.status === "error").length;
+  const total = jobs.length || targets.length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
   return (
     <div className="border border-accent-cyan/30 bg-bg-surface p-4 space-y-3">
       <div className="flex items-center gap-2 text-[10px] font-mono text-accent-cyan uppercase tracking-widest">
         <span className="h-2 w-2 rounded-full bg-accent-cyan animate-pulse shrink-0" />
-        REFRESH IN PROGRESS
+        INGESTING {total} ACCOUNT{total !== 1 ? "S" : ""}
       </div>
       <div className="space-y-1.5">
-        {REFRESH_STEPS.map((step, i) => {
-          const done = i < currentStep;
-          const active = i === currentStep;
-          return (
-            <div key={step} className="flex items-center gap-3">
-              <span
-                className={`shrink-0 h-1.5 w-1.5 rounded-full transition-colors ${
-                  done
-                    ? "bg-accent-green"
-                    : active
-                    ? "bg-accent-cyan animate-pulse"
-                    : "bg-surface-high"
-                }`}
-              />
-              <span
-                className={`text-[10px] font-mono uppercase tracking-wider transition-colors ${
-                  done
-                    ? "text-accent-green/70"
-                    : active
-                    ? "text-accent-cyan"
-                    : "text-text-muted"
-                }`}
-              >
-                {step}
-                {done && " \u2713"}
-              </span>
-            </div>
-          );
-        })}
+        {jobs.map((job) => (
+          <div key={job.username} className="flex items-center gap-3">
+            <span
+              className={`shrink-0 h-1.5 w-1.5 rounded-full transition-colors ${
+                job.status === "complete"
+                  ? "bg-accent-green"
+                  : job.status === "error"
+                  ? "bg-red-500"
+                  : "bg-accent-cyan animate-pulse"
+              }`}
+            />
+            <span
+              className={`text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                job.status === "complete"
+                  ? "text-accent-green/70"
+                  : job.status === "error"
+                  ? "text-red-400"
+                  : "text-accent-cyan"
+              }`}
+            >
+              {job.username}
+              {job.status === "complete" && ` \u2713 ${job.notes_written ?? 0} note${job.notes_written !== 1 ? "s" : ""}`}
+              {job.status === "error" && " \u2717 FAILED"}
+            </span>
+          </div>
+        ))}
       </div>
       {/* Progress bar */}
       <div className="h-px bg-surface-high w-full overflow-hidden">
         <div
           className="h-full bg-accent-cyan transition-all duration-700"
-          style={{ width: `${Math.round(((currentStep + 1) / REFRESH_STEPS.length) * 100)}%` }}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
@@ -457,6 +481,8 @@ export function AgenticHubTab() {
   const { mutate } = useSWRConfig();
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
+  const [refreshTargets, setRefreshTargets] = useState<string[]>([]);
   const [refreshResult, setRefreshResult] = useState<{ notes_written: number } | null>(null);
 
   const accounts = useMemo(() => {
@@ -469,30 +495,68 @@ export function AgenticHubTab() {
   );
 
   const handleRefresh = useCallback(async () => {
-    if (refreshing) return;
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     setRefreshing(true);
     setRefreshResult(null);
-    try {
-      const targets =
-        accountFilter === "all" ? accounts : [accountFilter];
 
+    const targets =
+      accountFilter === "all" ? accounts : [accountFilter];
+    setRefreshTargets(targets);
+
+    try {
       // Fire off all ingestion jobs (returns 202 immediately)
+      // 409 means already running — that's fine, treat as success
       await Promise.all(
         targets.map((username) =>
-          apiMutate("/instagram/refresh", { body: { username, days: 14 } })
+          apiMutate("/instagram/refresh", { body: { username, days: 14 } }).catch(
+            (err: Error) => {
+              if (err.message.includes("409")) return;
+              throw err;
+            }
+          )
         )
       );
 
-      // Show progress animation for a few seconds, then revalidate feed
-      await new Promise((r) => setTimeout(r, 5000));
+      // Poll until all jobs finish (complete or error)
+      const allDone = () =>
+        new Promise<number>((resolve) => {
+          const poll = async () => {
+            let totalNotes = 0;
+            let finished = 0;
+            for (const username of targets) {
+              try {
+                const res = await fetch(`/api/instagram/refresh-status/${username}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.status === "complete" || data.status === "error") {
+                    finished++;
+                    totalNotes += data.notes_written ?? 0;
+                  }
+                }
+              } catch {
+                // Keep polling on fetch failure
+              }
+            }
+            if (finished >= targets.length) {
+              resolve(totalNotes);
+            } else {
+              setTimeout(poll, POLL_INTERVAL_MS);
+            }
+          };
+          setTimeout(poll, 2000);
+        });
+
+      const totalNotes = await allDone();
       await mutate("/instagram/feed");
-      setRefreshResult({ notes_written: 0 });
+      setRefreshResult({ notes_written: totalNotes });
     } catch (err) {
       console.error("Refresh failed:", err);
     } finally {
+      refreshingRef.current = false;
       setRefreshing(false);
     }
-  }, [accountFilter, accounts, mutate, refreshing]);
+  }, [accountFilter, accounts, mutate]);
 
   return (
     <div className="space-y-6">
@@ -545,6 +609,7 @@ export function AgenticHubTab() {
 
       {/* Refresh Status */}
       <RefreshStatusPanel
+        targets={refreshTargets}
         active={refreshing}
         result={refreshResult}
         onDismiss={() => setRefreshResult(null)}

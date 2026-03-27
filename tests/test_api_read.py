@@ -79,8 +79,15 @@ _MOCK_JC_REPORTS: list[dict[str, Any]] = [
     {
         "date": "2026-03-07",
         "filename": "JournalClub 2026-03-07.md",
-        "sections": {"Top Picks": "1. Graph RAG paper"},
-        "content": "# JournalClub\n\n## Top Picks\n1. Graph RAG paper",
+        "sections": {
+            "Top Picks This Week": (
+                "- **NTK Scaling** — alignment diagnostic\n"
+                "- [[Tourism Fusion]] — cold-start handling\n"
+                "- TinyML Survey (#7) — compression techniques"
+            ),
+            "Paper 1": "Details about NTK paper",
+        },
+        "content": "# JournalClub\n\n## Top Picks This Week\n- NTK Scaling",
     },
 ]
 
@@ -88,9 +95,47 @@ _MOCK_TLDR_REPORTS: list[dict[str, Any]] = [
     {
         "date": "2026-03-07",
         "filename": "TLDR 2026-03-07.md",
-        "sections": {"Headlines": "- Claude 4 released"},
-        "ai_signal": "The industry is shifting.",
+        "sections": {
+            "Headlines": "- Claude 4 released",
+            "Tools": (
+                "- **Perplexity Agent API** — agentic search\n"
+                "- [[DuckDB]] 1.5.0 — fast analytics\n"
+                "- Feldera — streaming SQL"
+            ),
+        },
+        "ai_signal": "The industry is **shifting** toward agentic workflows.",
         "content": "# TLDR\n\n## Headlines\n- Claude 4",
+    },
+]
+
+# JC report with "Top Picks" fallback (no "This Week")
+_MOCK_JC_REPORTS_FALLBACK: list[dict[str, Any]] = [
+    {
+        "date": "2026-02-28",
+        "filename": "JournalClub 2026-02-28.md",
+        "sections": {"Top Picks": "- Old paper one\n- Old paper two"},
+        "content": "# JournalClub",
+    },
+]
+
+# TLDR report with "Tools Mentioned" variant
+_MOCK_TLDR_REPORTS_VARIANT: list[dict[str, Any]] = [
+    {
+        "date": "2026-02-28",
+        "filename": "TLDR 2026-02-28.md",
+        "sections": {"Tools Mentioned": "- Volga — Rust engine"},
+        "ai_signal": "",
+        "content": "# TLDR",
+    },
+]
+
+# Report with no matching sections (drifted format)
+_MOCK_JC_REPORTS_EMPTY: list[dict[str, Any]] = [
+    {
+        "date": "2026-01-15",
+        "filename": "JournalClub 2026-01-15.md",
+        "sections": {"Summary": "A general summary with no top picks."},
+        "content": "# JournalClub",
     },
 ]
 
@@ -747,3 +792,110 @@ class TestCORS:
             },
         )
         assert resp.headers.get("access-control-allow-origin") != "http://evil.com"
+
+
+# ===================================================================
+# Report Brief Extraction (Session 24.5)
+# ===================================================================
+
+
+class TestReportBrief:
+    """Verify that /api/reports includes a structured `brief` field per report."""
+
+    def test_jc_report_has_brief_with_top_picks(self, client: TestClient) -> None:
+        """JournalClub reports in unified list have brief with top_picks."""
+        resp = client.get("/api/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        jc_reports = [r for r in data if r["type"] == "journalclub"]
+        assert len(jc_reports) >= 1
+        report = jc_reports[0]
+
+        assert "brief" in report
+        brief = report["brief"]
+        # All fields must be present (normalized defaults)
+        for key in (
+            "top_picks",
+            "top_tools",
+            "blog_ideas",
+            "ai_signal",
+            "ai_signal_source",
+        ):
+            assert key in brief, f"Missing key: {key}"
+
+        # JC should have top_picks populated
+        assert len(brief["top_picks"]) >= 1
+        # JC should NOT have tools or ai_signal
+        assert brief["top_tools"] == []
+        assert brief["blog_ideas"] == []
+        assert brief["ai_signal"] is None
+        assert brief["ai_signal_source"] is None
+
+    def test_tldr_report_has_brief_with_tools_and_signal(
+        self, client: TestClient
+    ) -> None:
+        """TLDR reports in unified list have brief with top_tools and ai_signal."""
+        resp = client.get("/api/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        tldr_reports = [r for r in data if r["type"] == "tldr"]
+        assert len(tldr_reports) >= 1
+        report = tldr_reports[0]
+
+        assert "brief" in report
+        brief = report["brief"]
+        # TLDR should have tools populated
+        assert len(brief["top_tools"]) >= 1
+        # Each tool is {name, category}
+        tool = brief["top_tools"][0]
+        assert "name" in tool
+        assert "category" in tool
+        # TLDR should have ai_signal
+        assert brief["ai_signal"] is not None
+        assert brief["ai_signal_source"] == "TLDR 2026-03-07"
+        # TLDR should NOT have top_picks
+        assert brief["top_picks"] == []
+
+    def test_brief_strips_markdown(self, client: TestClient) -> None:
+        """Brief content must not contain raw markdown syntax."""
+        resp = client.get("/api/reports")
+        data = resp.json()
+
+        jc = next(r for r in data if r["type"] == "journalclub")
+        for pick in jc["brief"]["top_picks"]:
+            assert "**" not in pick, f"Markdown bold found in: {pick}"
+            assert "[[" not in pick, f"Wiki-link found in: {pick}"
+
+        tldr = next(r for r in data if r["type"] == "tldr")
+        if tldr["brief"]["ai_signal"]:
+            assert "**" not in tldr["brief"]["ai_signal"]
+        for tool in tldr["brief"]["top_tools"]:
+            assert "**" not in tool["name"]
+            assert "[[" not in tool["name"]
+
+    def test_unified_reports_all_have_brief(self, client: TestClient) -> None:
+        """GET /api/reports — every report in the unified list has a brief."""
+        resp = client.get("/api/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        for report in data:
+            assert "brief" in report, f"Missing brief in {report.get('title')}"
+            brief = report["brief"]
+            # Verify normalized shape — all keys present
+            for key in (
+                "top_picks",
+                "top_tools",
+                "blog_ideas",
+                "ai_signal",
+                "ai_signal_source",
+            ):
+                assert key in brief, f"Missing {key} in brief for {report.get('title')}"
+
+    def test_brief_keeps_legacy_fields(self, client: TestClient) -> None:
+        """During additive migration, highlights and summary still exist."""
+        resp = client.get("/api/reports")
+        data = resp.json()
+        report = data[0]
+        # Legacy fields preserved during transition
+        assert "highlights" in report
+        assert "summary" in report or report.get("summary") is None

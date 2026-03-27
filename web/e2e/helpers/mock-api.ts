@@ -125,13 +125,53 @@ const MOCK_TOOLS = [
 /** Mock reports (dashboard tab) */
 const MOCK_REPORTS = [
   {
-    title: "Week 12 JournalClub",
+    title: "JournalClub 2026-03-15",
     date: "2026-03-15",
-    source: "JournalClub",
+    source: "journalclub",
     type: "journalclub",
-    highlights: ["New transformer architecture"],
+    file_path: "JournalClub 2026-03-15.md",
+    highlights: ["Top Picks This Week"],
+    summary: "NTK Scaling paper — alignment diagnostic",
+    brief: {
+      top_picks: [
+        "NTK Scaling Paper — alignment as a training diagnostic",
+        "Tourism Recommendation Fusion — cold-start handling",
+      ],
+      top_tools: [],
+      blog_ideas: [],
+      ai_signal: null,
+      ai_signal_source: null,
+    },
+  },
+  {
+    title: "TLDR 2026-03-13",
+    date: "2026-03-13",
+    source: "tldr",
+    type: "tldr",
+    file_path: "TLDR 2026-03-13.md",
+    highlights: ["Headlines", "Tools"],
+    summary: "Claude computer use shipped for macOS",
+    brief: {
+      top_picks: [],
+      top_tools: [
+        { name: "Perplexity Agent API", category: "" },
+        { name: "DuckDB 1.5.0", category: "" },
+      ],
+      blog_ideas: [],
+      ai_signal: "Claude computer use shipped for macOS. Auto Mode is architecturally notable.",
+      ai_signal_source: "TLDR 2026-03-13",
+    },
   },
 ];
+
+/** Mock home summary (Intel Brief) */
+const MOCK_HOME_SUMMARY = {
+  top_picks: ["NTK Scaling Paper — alignment diagnostic"],
+  top_tools: [{ name: "Perplexity Agent API", category: "API" }],
+  blog_ideas: [{ title: "Adaptive Kernels vs. SHAP", status: "Idea" }],
+  ai_signal: "Three stories defined AI/ML this week.",
+  ai_signal_source: "TLDR 2026-03-13",
+};
 
 /** Mock research reports (reports page) */
 const MOCK_RESEARCH_REPORTS = [
@@ -274,6 +314,14 @@ export async function mockAllApiRoutes(page: Page): Promise<void> {
     route.fulfill({ json: MOCK_TOOLS })
   );
 
+  await page.route("**/api/dashboard/home-summary", (route) =>
+    route.fulfill({ json: MOCK_HOME_SUMMARY })
+  );
+
+  await page.route("**/api/dashboard/stats", (route) =>
+    route.fulfill({ json: MOCK_STATS })
+  );
+
   await page.route("**/api/reports**", (route) =>
     route.fulfill({ json: MOCK_REPORTS })
   );
@@ -343,4 +391,5 @@ export {
   MOCK_INSTAGRAM,
   MOCK_ANALYSIS,
   MOCK_SUMMARY,
+  MOCK_HOME_SUMMARY,
 };

@@ -23,7 +23,7 @@ Session 14 runs after Session 13.
 Sessions 17–20 run sequentially (infrastructure → API read → API mutate → frontend bootstrap).
 Sessions 21 and 22 can run concurrently (separate terminal windows) after Session 20.
 Session 23 runs after both 21 and 22 complete.
-Sessions 24 and 25 run sequentially after Session 23.
+Sessions 24, 24.5, and 25 run sequentially after Session 23.
 
 ---
 
@@ -2366,61 +2366,382 @@ git commit -m "feat: E2E + unit tests, visual polish, accessibility, performance
 
 ---
 
+## Session 24.5: Research Feed Redesign [ ]
+
+Requires Session 24 complete. Prerequisite for Session 25.
+
+**Scope:** Fix broken Research Feed expanded state — raw markdown displayed as plain text, no structure in expanded reports, disconnected from Intel Brief. Every report expands into structured Intel Brief format (4-quadrant layout). Add SWR auto-refresh (60s polling, scoped to Home-tab hooks only). Pure parsing, no LLM calls.
+
+**Critique:** `docs/critiques/session-24-5-critique.md` — 3 HIGH, 4 MEDIUM findings. All addressed in tasks below.
+
+**Stitch:** Screen `c62183c33b214f2d84283f9dbe86b1cc` in project `7482836304465455378` — mockup of redesigned Home tab.
+
+**Skills (MANDATORY reads):**
+- `framer-motion/SKILL.md` — animation patterns for expanded brief
+- `docs/designs/DESIGN_SYSTEM.md` — 0px border-radius, glow, fonts
+
+**Agent teams:**
+- Deploy `tdd-guide` agent for test-first on backend brief extraction
+- Deploy `code-reviewer` agent after component refactor
+
+### [24.5a] Backend: Per-Report Brief Extraction [ ]
+
+- [ ] **TDD**: Run `/steadows-tdd`. Write test first for new brief shape.
+- [ ] Add `_extract_report_brief(report, report_type)` to `api/routers/content.py`
+  - JournalClub: extracts `top_picks` from "Top Picks This Week"/"Top Picks" section (reuse logic + markdown stripping from `get_home_summary()`)
+  - TLDR: extracts `top_tools` as `{ name: str, category: "" }[]` from "Tools"/"Tools Mentioned" section bullets (strip markdown), `ai_signal` from parsed field, `ai_signal_source` from date
+  - Other fields empty per type (no cross-source mixing)
+  - **CRITICAL (critique HIGH-2): Always emit fully normalized brief** — `top_picks: []`, `top_tools: []`, `blog_ideas: []`, `ai_signal: null`, `ai_signal_source: null` as defaults. Never omit fields.
+- [ ] Update `_to_report_item()`: add `brief` field **additively** — keep `highlights` and `summary` for now **(critique HIGH-3, MEDIUM-5: additive migration, deprecate old fields in later cleanup)**
+- [ ] Backend tests for all section name variants:
+  - JC "Top Picks This Week" and JC "Top Picks" (fallback)
+  - TLDR "Tools" and TLDR "Tools Mentioned" (fallback)
+  - Report with no matching sections → normalized empty brief (not crash)
+  - Markdown stripping in extracted items (no `**`, `[[`, `#` in output)
+- [ ] Verify: `pytest tests/test_api_read.py` passes with updated assertions
+
+### [24.5b] Frontend: Shared BriefQuadrants Component [ ]
+
+- [ ] Add `ReportBrief` type to `web/src/app/dashboard/types.ts` (alias of `HomeSummary`)
+- [ ] Update `ReportItem` type: add `brief: ReportBrief` (keep `highlights?` and `summary?` during transition)
+- [ ] Extract `BriefQuadrants` component from `IntelBriefCard` quadrant JSX in `HomeTab.tsx`
+  - Renders 2x2 grid: Top Picks / Blog Ideas / Top Tools / AI Signal
+  - Each quadrant renders only when its array `.length > 0` or string is non-null
+  - Empty fallback: if all brief fields are empty/null, show "No structured data available" caption
+- [ ] Refactor `IntelBriefCard` to use `<BriefQuadrants brief={summary} />`
+- [ ] Refactor `ResearchFeedCard` expanded state:
+  - If `item.brief` has any populated fields → render `<BriefQuadrants brief={item.brief} />`
+  - Else fall back to legacy `summary`/`highlights` rendering **(critique HIGH-3: graceful degradation for historical reports)**
+- [ ] **Fix expansion state identity (critique HIGH-1):**
+  - Replace `expandedIndex` (array index) with `expandedKey` using `item.file_path` or `${item.type}-${item.date}` as stable identity
+  - Use same stable key as React `key` prop on report cards (not array index `i`)
+  - Prevents wrong-card-expanded bugs when SWR polling inserts new reports at top
+- [ ] Verify: `pnpm build` passes, no type errors
+
+### [24.5c] SWR Auto-Refresh [ ]
+
+- [ ] **Scoped polling (critique MEDIUM-4):** Add `refreshInterval: 60_000` to `useReports()` and `useHomeSummary()` in `web/src/app/dashboard/hooks.ts` only — NOT to `defaultSWRConfig`, NOT to `web/src/app/reports/hooks.ts` (separate Reports page hook)
+  - Leave `defaultSWRConfig` in `web/src/lib/api.ts` unchanged (no global blast radius to archive, cockpit, reports pages)
+  - `useDashboardStats` in `web/src/app/dashboard/hooks.ts` already has its own 30s override, unaffected
+- [ ] No LLM calls involved — all polled endpoints are pure parser reads
+- [ ] Verify: cockpit/archive/reports pages do NOT poll (inspect network tab)
+
+### [24.5d] Test Updates [ ]
+
+- [ ] Update Python API read tests: assert `brief` field present with normalized defaults
+- [ ] Update frontend hook/component tests: mock `ReportItem` with `brief` field
+- [ ] Add backend tests: JC brief has `top_picks`, TLDR brief has `ai_signal` + `top_tools`
+- [ ] Add backend test: empty/drifted report produces normalized empty brief (no crash)
+- [ ] Update `web/e2e/helpers/mock-api.ts` **(critique MEDIUM-6)**:
+  - Emit new `brief` field in `/api/reports` mock
+  - Ensure `/api/dashboard/stats` and `/api/dashboard/home-summary` mocks return valid payloads (required by Home tab before report cards render)
+- [ ] Add dashboard E2E spec: expand JC report → see "JournalClub Top Picks" quadrant
+- [ ] Add dashboard E2E spec: expand TLDR report → see "Top Tools" + "Weekly AI Signal"
+- [ ] Add dashboard E2E spec: expand report with empty brief → see fallback text
+- [ ] Verify: `pytest tests/` and `pnpm test` both pass
+
+### [24.5e] Quality Gate [ ]
+
+- [ ] `pnpm build` + `pnpm test` pass
+- [ ] `pytest tests/` passes
+- [ ] Visual check: expand JC report → shows "JournalClub Top Picks" quadrant
+- [ ] Visual check: expand TLDR report → shows "Top Tools" + "Weekly AI Signal" quadrants
+- [ ] Visual check: Intel Brief card still renders all 4 quadrants (no regression)
+- [ ] Visual check: historical/drifted report → graceful fallback, not blank card **(critique MEDIUM-6)**
+- [ ] No raw markdown syntax (`###`, `**`, `*`) visible in any expanded card
+- [ ] **Refresh stability check (critique HIGH-1):** expand a report, wait for SWR poll, confirm same card stays expanded
+- [ ] **Verify**: Run `/steadows-verify`
+
+### [24.5f] Commit [ ]
+
+```bash
+git add api/routers/content.py web/src/app/dashboard/HomeTab.tsx \
+  web/src/app/dashboard/types.ts web/src/app/dashboard/hooks.ts \
+  web/src/lib/api.ts \
+  tests/ web/src/__tests__/ web/e2e/ GSD_PLAN.md
+git commit -m "feat: Research Feed redesign — structured Intel Brief per report card, scoped SWR auto-refresh"
+```
+
+---
+
+## Session 24.6: Knowledge Linker Port (FastAPI + Next.js) [ ]
+
+Requires Session 24 complete (API + Next.js infrastructure in place).
+
+**Scope:** Port the Knowledge Linker (Obsidian graph manicure) from Streamlit-only to the dual-stack. Expose `link_vault_all()` via a FastAPI background-task endpoint with polling, add a "Link Vault" card to the Next.js Agentic Hub tab with progress feedback. Zero changes to `src/utils/knowledge_linker.py` — it's already Streamlit-free.
+
+**Design decisions:**
+- **Polling over WebSocket** — operation takes 2-5s, same pattern as IG refresh
+- **Single-job model** — vault linking is sequential, only one run at a time (409 on concurrent attempts)
+- **Explicit graph cache invalidation** — clear `_graph_cache` after linking instead of waiting for 1hr TTL
+
+**Agent teams:**
+- Deploy `tdd-guide` agent for test-first on API endpoints
+- Deploy `code-reviewer` agent after frontend card implementation
+
+**Concurrency:** [24.6a]+[24.6b] can run in parallel → [24.6c] depends on both → [24.6d]+[24.6e] can run in parallel → [24.6f] depends on [24.6d] → [24.6g] last
+
+### [24.6a] Create Linker Router [ ]
+
+- [ ] Create `api/routers/linker.py` following `ingestion.py` async-job-with-polling pattern:
+  - In-memory `_job` dict + `threading.Lock` for thread-safe reads/writes
+  - `_job` stores: `status` ("idle"|"running"|"complete"|"error"), `current_directory` (str), `results` (dict[str,int]), `started_at`, `completed_at`, `error`
+  - `POST /api/linker/run` — checks if running (409), sets "running", spawns `BackgroundTasks`, returns 202
+  - Background worker: calls `build_entity_index()` once, iterates `_LINK_TARGETS` updating `current_directory` before each dir, calls `link_satellites_to_projects()` last. Try/except wrapper always sets terminal status.
+  - `GET /api/linker/status` — returns current `_job` dict (or `{"status": "idle"}`)
+  - Router prefix: `/api/linker`, tag: `linker`
+
+### [24.6b] Add Pydantic Model [ ]
+
+- [ ] Add `LinkerStatusResponse` to `api/models.py`:
+  - Fields: `status` (Literal["idle","running","complete","error"]), `current_directory` (str|None), `results` (dict[str,int]|None), `total_modified` (int|None), `started_at` (str|None), `completed_at` (str|None), `error` (str|None)
+
+### [24.6c] Register Router + Graph Cache Invalidation [ ]
+
+- [ ] Import `linker` from `api.routers`, add `app.include_router(linker.router)` in `api/main.py` after `ingestion`
+- [ ] In linker background worker: after successful `link_vault_all`, clear `_graph_cache` from `api/routers/graph.py` so graph health endpoints reflect new links immediately
+- [ ] Verify Next.js proxy config (`/api/:path*` wildcard) covers `/api/linker/*` — no changes expected
+
+### [24.6d] Wire AgenticHubTab into Dashboard [ ]
+
+- [ ] Add `"agentic-hub"` to `DashboardTab` union type in `web/src/app/dashboard/types.ts`
+- [ ] Add `{ id: "agentic-hub", label: "AGENTIC HUB" }` to `DASHBOARD_TABS` array
+- [ ] Add lazy import + render for `AgenticHubTab` in `web/src/app/dashboard/DashboardView.tsx`
+
+### [24.6e] Add Knowledge Linker Card to Agentic Hub [ ]
+
+- [ ] Add `KnowledgeLinkerCard` component to `AgenticHubTab.tsx` (or extract to `KnowledgeLinkerCard.tsx` if >80 lines):
+  - "LINK VAULT" `GlowButton` fires `POST /api/linker/run`
+  - State machine: idle → running → complete/error
+  - While running: poll `GET /api/linker/status` every 1.5s, show `current_directory` with pulsing cyan dot (reuse `RefreshStatusPanel` pattern)
+  - On complete: results summary — total files modified, per-directory breakdown (only dirs with modifications > 0), green success banner with DISMISS
+  - On error: red error message
+  - Handle 409: show "ALREADY RUNNING" state
+  - Card styling: `bg-bg-surface border border-accent-cyan/20 p-5`, header "KNOWLEDGE LINKER" in `font-headline text-accent-cyan uppercase tracking-widest`
+
+### [24.6f] API Endpoint Tests [ ]
+
+- [ ] Create `tests/test_linker_router.py`:
+  - `POST /api/linker/run` returns 202 with `{"status": "accepted"}`
+  - `POST /api/linker/run` while running returns 409
+  - `GET /api/linker/status` returns idle when no job has run
+  - `GET /api/linker/status` returns complete with results after job finishes
+  - Mock `knowledge_linker.build_entity_index`, `link_directory`, `link_satellites_to_projects` at import boundary
+  - Mock `get_vault_path_str` dependency
+
+### [24.6g] Quality Gate [ ]
+
+- [ ] `ruff check src/ api/ tests/` passes
+- [ ] `pytest tests/ -v --tb=short` — all tests pass including new linker tests
+- [ ] Manual: click "LINK VAULT" in Next.js Agentic Hub → see progress → see results summary
+- [ ] Manual: verify graph health endpoint returns updated metrics after linking
+- [ ] Manual: trigger concurrent run → confirm 409 response
+
+**Commit checkpoint:**
+```bash
+git add \
+  api/routers/linker.py \
+  api/models.py \
+  api/main.py \
+  web/src/app/dashboard/AgenticHubTab.tsx \
+  web/src/app/dashboard/types.ts \
+  web/src/app/dashboard/DashboardView.tsx \
+  tests/test_linker_router.py \
+  GSD_PLAN.md
+git commit -m "feat: port Knowledge Linker to FastAPI + Next.js — background task endpoint, polling status, Agentic Hub card"
+```
+
+---
+
 ## Session 25: Cutover + Deployment [ ]
 
-Requires Session 24 complete.
+Requires Session 24.5 complete.
 
-**Scope:** Decommission Streamlit, create unified launch scripts, update documentation.
+**Scope:** Decommission Streamlit, create unified launch scripts, macOS app bundle, update documentation.
 
 **Skills:** N/A (ops + documentation only)
 **Stitch:** N/A
 **Agent teams:**
 - Deploy `doc-updater` agent for CLAUDE.md + README updates
 - Deploy `historian` agent for final checkpoint
-**Concurrency:** [25b] deprecation + [25c] documentation can run in parallel
+**Concurrency:** [25c] documentation + [25d] Obsidian note can run in parallel after [25a] and [25b] are complete. All other tasks are sequential.
+**Dependency chain:** [25a] → [25b] → [25c]+[25d] parallel → [25e] → [25f] → [25g] → [25h]
 
-### [25a] Create Launch Scripts [ ]
+### [25a] Unignore Scripts + Create Launch Scripts [ ]
 
-- [ ] `scripts/dev.sh` — starts FastAPI port 8000 + Next.js port 3000, SIGINT traps both. Next.js proxy handles `/api/*` and `/ws/*` routing
-- [ ] `scripts/start.sh` — production: `uvicorn` (not gunicorn — needed for WebSocket support) + Node
-- [ ] `scripts/Caddyfile` (or `nginx.conf`) — reverse proxy config: `:3000` serves Next.js, `/api/*` and `/ws/*` proxy to `:8000` with WebSocket upgrade support. This is a required deliverable, not optional — same-origin routing is part of the frontend contract
+- [ ] **Fix `.gitignore`**: Remove blanket `scripts/` ignore. Replace with explicit file-by-file allowlist: `!scripts/dev.sh`, `!scripts/start.sh`, `!scripts/build-icns.sh`, `!scripts/build-app.sh`, `!scripts/launcher.sh`, `!scripts/Caddyfile`, `!scripts/AppIcon.icns`. Commit instructions in [25g] must also stage files by name, not `git add scripts/`
+- [ ] Copy radar sweep icon to stable path: `cp generated_imgs/generated-2026-03-27T20-30-16-478Z-ibhqhv.png assets/app-icon.png` (version-controlled, not a timestamped generated path)
+- [ ] `scripts/dev.sh` — starts both servers with explicit child PID tracking:
+  - FastAPI: `uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload &` → capture `$!` as `API_PID`
+  - Next.js: `cd web && npm run dev &` → capture `$!` as `WEB_PID` (npm, not pnpm — repo uses `package-lock.json`)
+  - Trap: `trap 'kill $API_PID $WEB_PID 2>/dev/null; wait' SIGINT SIGTERM` — kills only the two children, never the caller's shell
+  - `wait $API_PID $WEB_PID` to keep script alive
+  - Working directory: repo root
+- [ ] `scripts/start.sh` — production mode (serve only, no build), same PID-tracking pattern:
+  - `uvicorn api.main:app --host 127.0.0.1 --port 8000 &` → `API_PID=$!`
+  - `cd web && PORT=3001 npm start &` → `WEB_PID=$!` (`next start` reads `PORT` natively, no `package.json` change)
+  - Same trap pattern as `dev.sh`: `trap 'kill $API_PID $WEB_PID 2>/dev/null; wait' SIGINT SIGTERM`
+
+**Process cleanup contract (applies to both scripts):** Track child PIDs explicitly and kill those on signal. Do NOT use `kill 0` (unsafe — signals the caller's process group when run from a terminal) or `kill -- -$$` (same risk). The launcher sends `kill -TERM $START_PID`; the script's trap cascades to its two children via their captured PIDs.
+- [ ] `scripts/Caddyfile` — reverse proxy config (required deliverable):
+  - `:3000` public port (Caddy owns this)
+  - `/*` proxy to `127.0.0.1:3001` (Next.js internal port)
+  - `/api/*` proxy to `127.0.0.1:8000` (FastAPI HTTP)
+  - `/ws/*` proxy to `127.0.0.1:8000` with WebSocket upgrade support
+- [ ] **Routing contract**:
+  - **Dev mode** (`dev.sh`): Next.js on `:3000`, rewrites handle `/api/*` proxying. WebSocket traffic (`NEXT_PUBLIC_WS_URL`) connects directly to `ws://localhost:8000` — intentional for dev, not a bug.
+  - **Prod mode** (`start.sh` + Caddy): Caddy on `:3000` (public), Next.js on `:3001` (internal), FastAPI on `:8000` (internal). Both HTTP and WS are same-origin through Caddy.
+  - **App bundle**: Launcher runs `start.sh` AND starts Caddy with the bundled `Caddyfile`. User hits `:3000` (Caddy). Both HTTP and WS are same-origin through Caddy — the runtime derivation in `api.ts` sees no `NEXT_PUBLIC_WS_URL` and derives from `window.location`. This avoids the build-time env var problem entirely: since `NEXT_PUBLIC_WS_URL` is baked at `npm run build` time, the only clean way to support WS in the app is same-origin routing via Caddy.
+- [ ] **Env var matrix** (document in README and `.env.local.example`):
+  - `OBSIDIAN_VAULT_PATH` — required, absolute path to vault
+  - `ANTHROPIC_API_KEY` — required, Claude API key
+  - `API_BACKEND_URL` — optional, defaults to `http://127.0.0.1:8000` (used by Next.js rewrites)
+  - `NEXT_PUBLIC_WS_URL` — optional, build-time fallback only. See [25a-ws] for runtime derivation
+  - `LLM_TRACE` — optional, set `1` for debug logging
+
+**[25a-ws] WebSocket runtime derivation** (concrete implementation task):
+- [ ] Edit `web/src/lib/api.ts`: replace the current static `WS_BASE` with runtime derivation. Two modes only:
+  - **Dev mode** (`dev.sh`): `NEXT_PUBLIC_WS_URL=ws://localhost:8000` is baked at build time → client uses it directly
+  - **Prod/app mode** (`start.sh` + Caddy): `NEXT_PUBLIC_WS_URL` is unset at build time → client derives WS base from `window.location` (same-origin through Caddy on `:3000`)
+  ```typescript
+  // Current code to replace:
+  const WS_BASE = typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000"
+    : "";
+
+  // New pattern:
+  const WS_BASE = typeof window !== "undefined"
+    ? process.env.NEXT_PUBLIC_WS_URL
+      ?? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`
+    : "";
+  ```
+  When `NEXT_PUBLIC_WS_URL` is baked in (dev build), the client uses it directly. When absent (prod/app build), the client derives from the page origin — which is Caddy on `:3000`, providing same-origin WS routing.
+- [ ] Add test: verify `WS_BASE` derivation logic for both modes (env var present, env var absent)
 
 ### [25b] Deprecate Streamlit [ ]
 
+Requires [25a] complete (new launch path must be proven before removing the old one).
+
+- [ ] **Import audit first**: `grep -r "streamlit\|page_helpers_st\|from src.pages\|from pages" src/ tests/` — fix or remove every hit before proceeding
+- [ ] Fix `tests/test_page_helpers_split.py`: remove or rewrite imports of `page_helpers_st` (this file directly imports the module being deleted)
 - [ ] Move `src/pages/` → `src/legacy_pages/`
 - [ ] Move `src/Home.py` → `src/legacy_Home.py`
 - [ ] Remove `.streamlit/config.toml`
 - [ ] Remove `page_helpers_st.py`
 - [ ] Remove `streamlit` from `requirements.txt`
-- [ ] Verify: `pytest tests/` passes without Streamlit installed (tests import `utils/`, not pages)
+- [ ] Verify: `pytest tests/` passes without Streamlit installed
+- [ ] Verify: no remaining imports of `streamlit`, `page_helpers_st`, or `legacy_` paths in active code
 
-**Note:** Legacy files preserve reference/history, not immediate rollback. Restoring Streamlit would require re-adding `streamlit` to `requirements.txt` and recreating `page_helpers_st.py`. For true rollback, use `git revert`.
+**Note:** Legacy files preserve git history reference only. Rollback requires: `git revert` + `pip install streamlit` + verify env has all Streamlit deps. For the full rollback runbook, see [25h].
 
 ### [25c] Update Documentation [ ]
 
-- [ ] `README.md` — new architecture, setup, dev workflow
-- [ ] `CLAUDE.md` — remove Streamlit sections, add Next.js conventions, update Architecture diagram, remove Streamlit skills table
+Requires [25a] complete (need finalized launch contract before writing docs).
 
-### [25d] Update Obsidian Project Note [ ]
+- [ ] **Create** `README.md` at repo root (does not currently exist) — new architecture, setup, dev workflow, env var matrix from [25a]
+- [ ] Delete `web/README.md` (default Next.js boilerplate, adds confusion alongside root README): `git rm web/README.md`
+- [ ] `CLAUDE.md` — remove Streamlit sections, add Next.js conventions, update Architecture diagram, remove Streamlit skills table, update "Development Commands" to use `scripts/dev.sh`
+- [ ] Update `/steadows-verify` checks if any assert Streamlit-era assumptions (entry point, config paths)
 
-- [ ] Tech stack updated
-- [ ] Status: active
-- [ ] Overview mentions HUD rebuild
+### [25d] Update Obsidian Project Note [ ] (non-blocking)
 
-### [25e] Quality Gate [ ]
+Target: `SteveVault/Projects/Research Intelligence Dashboard.md`
 
-- [ ] `pnpm build`
-- [ ] `pytest tests/` without Streamlit
-- [ ] `scripts/dev.sh` starts both servers
+- [ ] Frontmatter `tech:` updated to `[fastapi, nextjs, react, tailwind, python, typescript]` (remove `streamlit`)
+- [ ] Frontmatter `status: active`
+- [ ] Overview paragraph mentions HUD rebuild and dual-stack architecture
+
+**Note:** This is an external file outside the repo. It cannot be committed or rolled back with `git revert`. Marked non-blocking — session can complete without it.
+
+### [25e] macOS .app Bundle [ ]
+
+Requires [25a] complete.
+
+- [ ] `scripts/build-icns.sh` — converts `assets/app-icon.png` (stable, version-controlled path) to `scripts/AppIcon.icns` using `sips` + `iconutil` (10 required sizes for the `.iconset`)
+- [ ] `scripts/launcher.sh` — app entrypoint that:
+  - Resolves project root: the `.app` bundle lives inside `dist/` within the repo, so project root is `SCRIPT_DIR/../../../../../` (5 levels: `launcher` → `MacOS/` → `Contents/` → `Research Dashboard.app/` → `dist/` → repo root). Alternatively, `build-app.sh` can write `PROJECT_ROOT` into a `.launcher-config` file inside the bundle at build time for robustness. **Must verify** with `[[ -f "$PROJECT_ROOT/api/main.py" ]]` — fail with `osascript` dialog if not found
+  - Discovers conda activation script (check in order: `$CONDA_EXE/../etc/profile.d/conda.sh`, `/opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh`, `$HOME/miniconda3/etc/profile.d/conda.sh`, `$HOME/anaconda3/etc/profile.d/conda.sh`; source `conda.sh`, not just find the binary). Shows `osascript` error dialog on failure — never fail silently
+  - `conda activate research-dashboard`, sources `$PROJECT_ROOT/.env.local` if it exists
+  - **Health-based port check** (not just port-open): if ports 3000, 3001, and 8000 are in use, `curl` both `http://localhost:3000` and `http://localhost:8000/api/papers` to verify they are RID processes, not unrelated. If healthy, open browser and exit. If port occupied but unhealthy, show `osascript` error dialog
+  - **Process startup:** Launch `scripts/start.sh &` → `START_PID=$!`, then `caddy run --config "$PROJECT_ROOT/scripts/Caddyfile" &` → `CADDY_PID=$!`. Three processes total: uvicorn, node (managed by `start.sh`), and Caddy (managed by launcher)
+  - Polls `localhost:3000` (Caddy) AND `localhost:8000/api/papers` readiness (60s timeout, 1s intervals) — both must respond before opening browser. 60s accounts for cold Next.js startup without a pre-built `.next/`
+  - Opens as PWA-style chromeless window: `open -a "Google Chrome" --args --app=http://localhost:3000`. Fallback if Chrome not found: `open http://localhost:3000` (default browser)
+  - Trap SIGTERM/SIGINT: `kill -TERM $START_PID $CADDY_PID` — `start.sh`'s own trap kills its two tracked child PIDs; Caddy exits cleanly on TERM
+  - On partial startup failure (one server starts, other doesn't within 60s): kill all tracked PIDs, show `osascript` error with which server failed
+  - **Caddy prerequisite:** `build-app.sh` checks `command -v caddy` and warns if not installed. README documents: `brew install caddy`
+- [ ] `scripts/build-app.sh` — assembles `dist/Research Dashboard.app/`:
+  - **Pre-builds Next.js**: runs `cd web && npm run build` so the `.next/` output is ready before the app launches. `start.sh` only serves, never builds
+  - Writes `PROJECT_ROOT=$(pwd)` into `Contents/Resources/.launcher-config` so the launcher doesn't rely on relative path arithmetic
+  - `Contents/MacOS/launcher` (from `launcher.sh`, `chmod +x`)
+  - `Contents/Resources/AppIcon.icns`
+  - `Contents/Resources/.launcher-config` (project root path)
+  - `Contents/Info.plist` (`CFBundleIdentifier: com.stevemeadows.research-dashboard`, `CFBundleExecutable: launcher`, `CFBundleIconFile: AppIcon`)
+- [ ] Add "macOS App" section to root `README.md` (build, install, uninstall, prerequisites)
+
+**Prerequisites:** `brew install caddy` (Caddy is required for the app bundle — same-origin WS routing).
+
+**Note:** Unsigned local dev tool — first launch requires right-click > Open to bypass Gatekeeper. Closing the Chrome PWA window does NOT stop the servers — quit the app from Activity Monitor or Dock to trigger SIGTERM cleanup.
+
+### [25f] Quality Gate [ ]
+
+Requires all of [25a] through [25e] complete.
+
+**Build + Tests:**
+- [ ] `cd web && npm run build` (npm, not pnpm)
+- [ ] `pytest tests/` without Streamlit installed
+- [ ] No remaining imports of `streamlit` or `page_helpers_st` in `src/` or `tests/`
+
+**Launch Scripts:**
+- [ ] `scripts/dev.sh` starts both servers, frontend can reach API (`curl localhost:8000/api/papers`)
+- [ ] `scripts/start.sh` starts both servers in production mode (Next.js on `:3001`, FastAPI on `:8000`)
+- [ ] `scripts/start.sh` + `scripts/Caddyfile` + `caddy run`: Caddy on `:3000` proxies to Next.js `:3001` and FastAPI `:8000`. Verify: `curl localhost:3000/api/papers` returns JSON, WebSocket connects via `ws://localhost:3000/ws/*`
+
+**App Bundle:**
+- [ ] `./scripts/build-icns.sh && ./scripts/build-app.sh` produces valid `.app` in `dist/`
+- [ ] Double-click `.app` from Finder — all three processes start (uvicorn, node, caddy), browser opens to `localhost:3000`, dashboard loads
+- [ ] Pin to Dock and launch — same behavior
+- [ ] Quit app (Dock right-click > Quit) — all processes terminate (`lsof -i :3000 -i :3001 -i :8000` clear)
+- [ ] Launch when servers already running — opens browser only, no duplicate processes
+- [ ] Launch after unclean exit (orphaned ports) — shows error dialog, does not open broken dashboard
+
+**Negative Cases:**
+- [ ] Launch `.app` without conda installed — shows `osascript` error dialog
+- [ ] Launch `.app` without `.env.local` — shows clear error about missing env vars
+- [ ] Launch `.app` without Chrome — falls back to default browser
+- [ ] Launch `.app` without Caddy installed — shows `osascript` error with install instructions
+
+**E2E:**
+- [ ] Add at least one unmocked E2E smoke test that hits the real FastAPI backend (not the mocked Playwright routes)
 - [ ] Full E2E suite passes
-- [ ] **Verify**: Run `/steadows-verify`
+- [ ] **Verify**: Run `/steadows-verify` (confirm it no longer asserts Streamlit-era checks)
 
-### [25f] Commit [ ]
+### [25g] Commit [ ]
+
+Requires [25f] quality gate passed.
 
 ```bash
-git add scripts/ src/ .streamlit/ requirements.txt README.md CLAUDE.md GSD_PLAN.md
-git commit -m "feat: cutover to Next.js + FastAPI — decommission Streamlit, unified launch scripts"
+git rm web/README.md
+git add scripts/dev.sh scripts/start.sh scripts/Caddyfile \
+  scripts/build-icns.sh scripts/build-app.sh scripts/launcher.sh scripts/AppIcon.icns \
+  assets/app-icon.png src/ .streamlit/ requirements.txt \
+  web/src/lib/api.ts \
+  README.md CLAUDE.md .gitignore GSD_PLAN.md
+git commit -m "feat: cutover to Next.js + FastAPI — decommission Streamlit, unified launch scripts, macOS app bundle"
 ```
+
+**Note:** Staging is file-by-file, not `git add scripts/`, because `.gitignore` uses an allowlist pattern. `dist/` is not staged. `web/README.md` is removed via `git rm`. `web/src/lib/api.ts` is staged for the WS runtime derivation change [25a-ws].
+
+### [25h] Rollback Runbook [ ]
+
+If cutover fails and we need to revert:
+
+1. **Code**: `git revert <cutover-commit>` — restores Streamlit files, requirements, configs
+2. **Python env**: `pip install streamlit` (revert removes it from `requirements.txt` but not the env)
+3. **Processes**: `lsof -ti :8000 -ti :3000 -ti :3001 | xargs kill -9` — clean up any orphaned servers (`:3001` is prod Next.js port)
+4. **App bundle**: `rm -rf "/Applications/Research Dashboard.app" dist/`
+5. **Proxy**: Stop Caddy if running (`caddy stop`)
+6. **Verify**: `cd src && streamlit run Home.py` — confirm old entrypoint works
+7. **Obsidian note**: Manually revert tech stack and overview (external file, not in git)
 
 ---
 
@@ -2451,6 +2772,19 @@ git commit -m "feat: cutover to Next.js + FastAPI — decommission Streamlit, un
 | S16: `linked` source badge | No badge (suppressed) | `linked` is the default/expected state; badges only for novel discovery sources |
 | S16: Dedup priority | `linked` > `community` > `suggested` | Explicit human links are highest signal |
 | S16: `via_project` provenance | Stored on each community/suggested item | Shows user WHY an item was surfaced ("via Project B") — critical for trust |
+| S25: Frontend package manager | `npm` (not pnpm) | Repo has `web/package-lock.json`, no pnpm lockfile |
+| S25: App bundle launch mode | `scripts/start.sh` (production), not `dev.sh` | App should not run watchers/HMR; production semantics for a desktop launcher |
+| S25: App bundle prebuild | `build-app.sh` runs `npm run build`; `start.sh` only serves | Cold builds can blow the launcher readiness timeout; separate build from serve |
+| S25: App browser mode | Chrome PWA (`--app=` flag) with default browser fallback | Chromeless window gives native app feel; fallback if Chrome not installed |
+| S25: Port allocation | Dev: Next.js `:3000`, FastAPI `:8000`. Prod: Caddy `:3000`, Next.js `:3001`, FastAPI `:8000` | Caddy and Next.js cannot both own `:3000`; Next.js moves to internal port in prod |
+| S25: WS routing | Two modes: dev (env var `NEXT_PUBLIC_WS_URL` baked at build), prod/app (Caddy same-origin, runtime `window.location` derivation). App always runs behind Caddy | `NEXT_PUBLIC_WS_URL` is build-time — cannot be changed by launcher. Same-origin via Caddy is the only clean solution for a pre-built bundle |
+| S25: Prod Next.js port | `PORT=3001` env var passed to `npm start` | `next start` reads `PORT` natively; no `package.json` change needed; avoids conflict with Caddy on `:3000` |
+| S25: Port detection | Health-based (curl endpoints), not port-based (`lsof`) | Port occupied by wrong process would give false positive |
+| S25: Process cleanup | Explicit child PID tracking (`API_PID`, `WEB_PID`) in `start.sh`/`dev.sh`; launcher tracks `START_PID` + `CADDY_PID` | `kill 0` is unsafe (signals caller's shell); `setsid` unavailable on macOS; explicit PIDs are the only safe portable pattern |
+| S25: `web/README.md` | Delete via `git rm` (not keep or replace) | Default Next.js boilerplate conflicts with root README; consolidate to one source of truth |
+| S25: Launcher path resolution | `build-app.sh` writes `PROJECT_ROOT` into `.launcher-config` | Relative path arithmetic from bundle location is fragile across install locations |
+| S25: `.gitignore` strategy | Explicit file-by-file allowlist, not blanket unignore | Prevents accidental staging of local-only scripts in `scripts/` |
+| S25: Icon source | `assets/app-icon.png` (stable, versioned) | Timestamped generated path is brittle across regenerations |
 | S16: Prompt safety | `_sanitize_note_name()` escapes `<>& \n`, truncates to 200 chars | Graph-derived strings are vault note names — not user input, but can contain control-like characters |
 | HTML report generation | Python `markdown` lib post-agent | Agent writes clean .md; Python renders to .html — separation of concerns, no agent browser deps |
 | Review gate | `reviewed` flag in workbench.json | Forces deliberate human review before sandbox creation; prevents accidental Docker builds |
