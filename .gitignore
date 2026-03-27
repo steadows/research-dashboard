@@ -33,8 +33,29 @@ Thumbs.db
 status.json
 
 SESSION_*.md
+SESSIONS_*.md
 ralph.sh
 PROMPT.md
+
+# Build output
+.next/
+src/.next/
+
+# Context snapshots
+.context/
+
+# Playwright
+.playwright-mcp/
+web/playwright-report/
+
+# Scripts (local-only)
+scripts/
+
+# Research docs (local-only)
+docs/research/
+
+# Screenshots / images (local-only)
+*.png
 
 .axon/
 .claude/
