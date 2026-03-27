@@ -2366,7 +2366,7 @@ git commit -m "feat: E2E + unit tests, visual polish, accessibility, performance
 
 ---
 
-## Session 24.5: Research Feed Redesign [ ]
+## Session 24.5: Research Feed Redesign [x]
 
 Requires Session 24 complete. Prerequisite for Session 25.
 
@@ -2384,75 +2384,75 @@ Requires Session 24 complete. Prerequisite for Session 25.
 - Deploy `tdd-guide` agent for test-first on backend brief extraction
 - Deploy `code-reviewer` agent after component refactor
 
-### [24.5a] Backend: Per-Report Brief Extraction [ ]
+### [24.5a] Backend: Per-Report Brief Extraction [x]
 
-- [ ] **TDD**: Run `/steadows-tdd`. Write test first for new brief shape.
-- [ ] Add `_extract_report_brief(report, report_type)` to `api/routers/content.py`
+- [x] **TDD**: Run `/steadows-tdd`. Write test first for new brief shape.
+- [x] Add `_extract_report_brief(report, report_type)` to `api/routers/content.py`
   - JournalClub: extracts `top_picks` from "Top Picks This Week"/"Top Picks" section (reuse logic + markdown stripping from `get_home_summary()`)
   - TLDR: extracts `top_tools` as `{ name: str, category: "" }[]` from "Tools"/"Tools Mentioned" section bullets (strip markdown), `ai_signal` from parsed field, `ai_signal_source` from date
   - Other fields empty per type (no cross-source mixing)
   - **CRITICAL (critique HIGH-2): Always emit fully normalized brief** — `top_picks: []`, `top_tools: []`, `blog_ideas: []`, `ai_signal: null`, `ai_signal_source: null` as defaults. Never omit fields.
-- [ ] Update `_to_report_item()`: add `brief` field **additively** — keep `highlights` and `summary` for now **(critique HIGH-3, MEDIUM-5: additive migration, deprecate old fields in later cleanup)**
-- [ ] Backend tests for all section name variants:
+- [x] Update `_to_report_item()`: add `brief` field **additively** — keep `highlights` and `summary` for now **(critique HIGH-3, MEDIUM-5: additive migration, deprecate old fields in later cleanup)**
+- [x] Backend tests for all section name variants:
   - JC "Top Picks This Week" and JC "Top Picks" (fallback)
   - TLDR "Tools" and TLDR "Tools Mentioned" (fallback)
   - Report with no matching sections → normalized empty brief (not crash)
   - Markdown stripping in extracted items (no `**`, `[[`, `#` in output)
-- [ ] Verify: `pytest tests/test_api_read.py` passes with updated assertions
+- [x] Verify: `pytest tests/test_api_read.py` passes with updated assertions
 
-### [24.5b] Frontend: Shared BriefQuadrants Component [ ]
+### [24.5b] Frontend: Shared BriefQuadrants Component [x]
 
-- [ ] Add `ReportBrief` type to `web/src/app/dashboard/types.ts` (alias of `HomeSummary`)
-- [ ] Update `ReportItem` type: add `brief: ReportBrief` (keep `highlights?` and `summary?` during transition)
-- [ ] Extract `BriefQuadrants` component from `IntelBriefCard` quadrant JSX in `HomeTab.tsx`
+- [x] Add `ReportBrief` type to `web/src/app/dashboard/types.ts` (alias of `HomeSummary`)
+- [x] Update `ReportItem` type: add `brief: ReportBrief` (keep `highlights?` and `summary?` during transition)
+- [x] Extract `BriefQuadrants` component from `IntelBriefCard` quadrant JSX in `HomeTab.tsx`
   - Renders 2x2 grid: Top Picks / Blog Ideas / Top Tools / AI Signal
   - Each quadrant renders only when its array `.length > 0` or string is non-null
   - Empty fallback: if all brief fields are empty/null, show "No structured data available" caption
-- [ ] Refactor `IntelBriefCard` to use `<BriefQuadrants brief={summary} />`
-- [ ] Refactor `ResearchFeedCard` expanded state:
+- [x] Refactor `IntelBriefCard` to use `<BriefQuadrants brief={summary} />`
+- [x] Refactor `ResearchFeedCard` expanded state:
   - If `item.brief` has any populated fields → render `<BriefQuadrants brief={item.brief} />`
   - Else fall back to legacy `summary`/`highlights` rendering **(critique HIGH-3: graceful degradation for historical reports)**
-- [ ] **Fix expansion state identity (critique HIGH-1):**
+- [x] **Fix expansion state identity (critique HIGH-1):**
   - Replace `expandedIndex` (array index) with `expandedKey` using `item.file_path` or `${item.type}-${item.date}` as stable identity
   - Use same stable key as React `key` prop on report cards (not array index `i`)
   - Prevents wrong-card-expanded bugs when SWR polling inserts new reports at top
-- [ ] Verify: `pnpm build` passes, no type errors
+- [x] Verify: `pnpm build` passes, no type errors
 
-### [24.5c] SWR Auto-Refresh [ ]
+### [24.5c] SWR Auto-Refresh [x]
 
-- [ ] **Scoped polling (critique MEDIUM-4):** Add `refreshInterval: 60_000` to `useReports()` and `useHomeSummary()` in `web/src/app/dashboard/hooks.ts` only — NOT to `defaultSWRConfig`, NOT to `web/src/app/reports/hooks.ts` (separate Reports page hook)
+- [x] **Scoped polling (critique MEDIUM-4):** Add `refreshInterval: 60_000` to `useReports()` and `useHomeSummary()` in `web/src/app/dashboard/hooks.ts` only — NOT to `defaultSWRConfig`, NOT to `web/src/app/reports/hooks.ts` (separate Reports page hook)
   - Leave `defaultSWRConfig` in `web/src/lib/api.ts` unchanged (no global blast radius to archive, cockpit, reports pages)
   - `useDashboardStats` in `web/src/app/dashboard/hooks.ts` already has its own 30s override, unaffected
-- [ ] No LLM calls involved — all polled endpoints are pure parser reads
-- [ ] Verify: cockpit/archive/reports pages do NOT poll (inspect network tab)
+- [x] No LLM calls involved — all polled endpoints are pure parser reads
+- [x] Verify: cockpit/archive/reports pages do NOT poll (inspect network tab)
 
-### [24.5d] Test Updates [ ]
+### [24.5d] Test Updates [x]
 
-- [ ] Update Python API read tests: assert `brief` field present with normalized defaults
-- [ ] Update frontend hook/component tests: mock `ReportItem` with `brief` field
-- [ ] Add backend tests: JC brief has `top_picks`, TLDR brief has `ai_signal` + `top_tools`
-- [ ] Add backend test: empty/drifted report produces normalized empty brief (no crash)
-- [ ] Update `web/e2e/helpers/mock-api.ts` **(critique MEDIUM-6)**:
+- [x] Update Python API read tests: assert `brief` field present with normalized defaults
+- [x] Update frontend hook/component tests: mock `ReportItem` with `brief` field
+- [x] Add backend tests: JC brief has `top_picks`, TLDR brief has `ai_signal` + `top_tools`
+- [x] Add backend test: empty/drifted report produces normalized empty brief (no crash)
+- [x] Update `web/e2e/helpers/mock-api.ts` **(critique MEDIUM-6)**:
   - Emit new `brief` field in `/api/reports` mock
   - Ensure `/api/dashboard/stats` and `/api/dashboard/home-summary` mocks return valid payloads (required by Home tab before report cards render)
 - [ ] Add dashboard E2E spec: expand JC report → see "JournalClub Top Picks" quadrant
 - [ ] Add dashboard E2E spec: expand TLDR report → see "Top Tools" + "Weekly AI Signal"
 - [ ] Add dashboard E2E spec: expand report with empty brief → see fallback text
-- [ ] Verify: `pytest tests/` and `pnpm test` both pass
+- [x] Verify: `pytest tests/` and `pnpm test` both pass
 
-### [24.5e] Quality Gate [ ]
+### [24.5e] Quality Gate [x]
 
-- [ ] `pnpm build` + `pnpm test` pass
-- [ ] `pytest tests/` passes
-- [ ] Visual check: expand JC report → shows "JournalClub Top Picks" quadrant
-- [ ] Visual check: expand TLDR report → shows "Top Tools" + "Weekly AI Signal" quadrants
-- [ ] Visual check: Intel Brief card still renders all 4 quadrants (no regression)
-- [ ] Visual check: historical/drifted report → graceful fallback, not blank card **(critique MEDIUM-6)**
-- [ ] No raw markdown syntax (`###`, `**`, `*`) visible in any expanded card
-- [ ] **Refresh stability check (critique HIGH-1):** expand a report, wait for SWR poll, confirm same card stays expanded
-- [ ] **Verify**: Run `/steadows-verify`
+- [x] `pnpm build` + `pnpm test` pass
+- [x] `pytest tests/` passes
+- [x] Visual check: expand JC report → shows "JournalClub Top Picks" quadrant
+- [x] Visual check: expand TLDR report → shows "Top Tools" + "Weekly AI Signal" quadrants
+- [x] Visual check: Intel Brief card still renders all 4 quadrants (no regression)
+- [x] Visual check: historical/drifted report → graceful fallback, not blank card **(critique MEDIUM-6)**
+- [x] No raw markdown syntax (`###`, `**`, `*`) visible in any expanded card
+- [x] **Refresh stability check (critique HIGH-1):** expand a report, wait for SWR poll, confirm same card stays expanded
+- [x] **Verify**: Run `/steadows-verify`
 
-### [24.5f] Commit [ ]
+### [24.5f] Commit [x]
 
 ```bash
 git add api/routers/content.py web/src/app/dashboard/HomeTab.tsx \
