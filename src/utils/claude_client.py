@@ -8,6 +8,7 @@ protocol.
 import hashlib
 import logging
 import os
+import re
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
@@ -472,8 +473,10 @@ def summarize_instagram_post(
     Returns:
         Plain-text summary string, or empty string on error.
     """
-    shortcode = post.get("shortcode", post.get("name", ""))
-    cache_key = _build_cache_key(shortcode, "", "ig_summary_v1")
+    # Build a unique cache key from account + name (shortcode not always available
+    # from frontend). Fallback chain ensures distinct keys per post.
+    unique_id = post.get("shortcode", "") or f"{post.get('account', '')}:{post.get('name', '')}"
+    cache_key = _build_cache_key(unique_id, "", "ig_summary_v1")
     cached = get_analysis_cache(cache_key, status_file)
     if cached is not None:
         return cached.get("response", "")
@@ -500,7 +503,7 @@ Summarize the main insight or takeaway from this video post.
 </objective>
 
 <style>
-Plain English. 2–3 sentences. No bullet points.
+Plain English. 2–3 sentences. No bullet points. No markdown. No headings. Just plain text.
 </style>
 
 <tone>
@@ -513,10 +516,13 @@ Direct, informative. Skip filler.
 
     try:
         result = _call_api(prompt, _HAIKU_MODEL, max_tokens=250)
+        # Strip any markdown heading the model may prepend (e.g. "# Summary\n")
+        text = re.sub(r"^#+\s*\w+\s*\n*", "", result.get("response", "")).strip()
+        result["response"] = text
         set_analysis_cache(cache_key, result, status_file)
-        return result.get("response", "")
+        return text
     except Exception as exc:
-        logger.warning("summarize_instagram_post failed for %s: %s", shortcode, exc)
+        logger.warning("summarize_instagram_post failed for %s: %s", unique_id, exc)
         return ""
 
 
