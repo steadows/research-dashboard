@@ -410,10 +410,10 @@ class TestIngestionRouter:
             "/api/instagram/refresh",
             json={"username": "stevedev", "days": 7},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 202
         data = resp.json()
-        assert data["notes_written"] == 1
-        assert isinstance(data["note_paths"], list)
+        assert data["status"] == "accepted"
+        assert data["username"] == "stevedev"
 
     def test_refresh_instagram_invalid_username(self, client: TestClient) -> None:
         """POST /api/instagram/refresh rejects invalid usernames."""
@@ -429,7 +429,7 @@ class TestIngestionRouter:
             "/api/instagram/refresh",
             json={"username": "stevedev"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 202
 
 
 # ===================================================================

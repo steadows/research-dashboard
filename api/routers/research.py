@@ -1,18 +1,26 @@
 """Research router — launch research agents and check status."""
 
 import html as html_module
+import json
 import logging
+import os
 import re
+import signal
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 
 from api.deps import get_vault_path_str
-from fastapi import Depends
-from utils.research_agent import is_agent_running, launch_research_agent, tail_log
+from utils.research_agent import (
+    is_agent_running,
+    launch_experiment_agent,
+    launch_research_agent,
+    launch_sandbox_agent,
+    tail_log,
+)
 from utils.workbench_tracker import (
     get_slug,
     get_workbench_item,
@@ -24,6 +32,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/research", tags=["research"])
 
 _WORKBENCH_ROOT = Path.home() / "research-workbench"
+
+# PIDs launched by this server process — only these can be killed
+_server_owned_pids: set[int] = set()
+
+# Max bytes to read per sandbox file to prevent OOM
+_MAX_FILE_READ_BYTES = 512 * 1024
 
 
 @router.post("/launch/{key:path}", status_code=202)
@@ -50,6 +64,7 @@ def launch_research(key: str) -> dict[str, Any]:
     output_dir = _WORKBENCH_ROOT / slug
 
     proc, model = launch_research_agent(item, output_dir)
+    _server_owned_pids.add(proc.pid)
 
     # Update workbench entry with agent metadata
     update_workbench_item(
@@ -72,13 +87,18 @@ def launch_research(key: str) -> dict[str, Any]:
 
 @router.get("/status/{key:path}")
 def get_research_status(key: str) -> dict[str, Any]:
-    """Check research agent status for a workbench item.
+    """Check agent status for a workbench item. Auto-transitions on completion.
+
+    If the item is in ``researching`` or ``sandbox_creating`` and the PID is
+    dead, this endpoint finalises the transition (to ``researched``/``failed``
+    or ``sandbox_ready``/``failed`` respectively) so the frontend sees the
+    correct state on the next poll.
 
     Args:
         key: Namespaced workbench key.
 
     Returns:
-        Dict with running status, log tail, and key.
+        Dict with running status, current status, log tail, and key.
 
     Raises:
         HTTPException: 404 if item not found in workbench.
@@ -89,14 +109,483 @@ def get_research_status(key: str) -> dict[str, Any]:
 
     pid = entry.get("pid")
     log_file = entry.get("log_file", "")
+    status = entry.get("status", "queued")
     running = is_agent_running(pid) if pid else False
-    log_tail, _ = tail_log(Path(log_file)) if log_file else ("", 0)
+    log_tail_str, _ = tail_log(Path(log_file)) if log_file else ("", 0)
+
+    # Auto-transition if agent died
+    if not running and pid:
+        if status == "sandbox_creating":
+            status = _finalise_sandbox_status(key, entry)
+        elif status == "researching":
+            status = _finalise_research_status(key, entry)
+        elif status == "experiment_running":
+            status = _finalise_experiment_status(key, entry)
 
     return {
         "key": key,
         "running": running,
+        "status": status,
         "pid": pid,
-        "log_tail": log_tail,
+        "log_tail": log_tail_str,
+    }
+
+
+def _finalise_sandbox_status(key: str, entry: dict[str, Any]) -> str:
+    """Transition a sandbox_creating item after its agent exits.
+
+    Args:
+        key: Workbench key.
+        entry: Current workbench entry.
+
+    Returns:
+        New status string.
+    """
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+
+    experiment_py = output_dir / "experiment.py"
+    run_sh = output_dir / "run.sh"
+
+    if experiment_py.is_file() or run_sh.is_file():
+        updates: dict[str, Any] = {
+            "status": "sandbox_ready",
+            "sandbox_dir": str(output_dir),
+        }
+        findings = output_dir / "experiment_findings.md"
+        if findings.is_file():
+            updates["findings_path"] = str(findings)
+        update_workbench_item(key, updates)
+        logger.info("Auto-finalised sandbox for '%s' → sandbox_ready", key)
+        return "sandbox_ready"
+
+    update_workbench_item(key, {"status": "failed"})
+    logger.warning("Sandbox agent for '%s' exited without output files → failed", key)
+    return "failed"
+
+
+def _finalise_research_status(key: str, entry: dict[str, Any]) -> str:
+    """Transition a researching item after its agent exits.
+
+    Args:
+        key: Workbench key.
+        entry: Current workbench entry.
+
+    Returns:
+        New status string.
+    """
+    from utils.research_agent import parse_research_output
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    research_md = _WORKBENCH_ROOT / slug / "research.md"
+
+    if research_md.is_file():
+        parsed = parse_research_output(research_md)
+        experiment_type = parsed.get("experiment_type")
+        update_workbench_item(
+            key,
+            {
+                "status": "researched",
+                "experiment_type": experiment_type,
+                "cost_flagged": parsed.get("cost_flagged", False),
+                "cost_notes": parsed.get("cost_notes", ""),
+            },
+        )
+        logger.info("Auto-finalised research for '%s' → researched", key)
+        return "researched"
+
+    update_workbench_item(key, {"status": "failed"})
+    logger.warning("Research agent for '%s' exited without research.md → failed", key)
+    return "failed"
+
+
+def _finalise_experiment_status(key: str, entry: dict[str, Any]) -> str:
+    """Transition an experiment_running item after its agent exits.
+
+    Checks for experiment_results.json and experiment_findings.md.
+    The agent is responsible for writing these even on failure, but
+    if neither exists the experiment is marked failed.
+
+    Args:
+        key: Workbench key.
+        entry: Current workbench entry.
+
+    Returns:
+        New status string.
+    """
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+
+    results_json = output_dir / "experiment_results.json"
+    findings_md = output_dir / "experiment_findings.md"
+
+    updates: dict[str, Any] = {"status": "experiment_done"}
+
+    if findings_md.is_file():
+        updates["findings_path"] = str(findings_md)
+
+    if results_json.is_file() or findings_md.is_file():
+        update_workbench_item(key, updates)
+        logger.info("Auto-finalised experiment for '%s' → experiment_done", key)
+        return "experiment_done"
+
+    # Revert to sandbox_ready so the user can retry — research is still valid
+    update_workbench_item(key, {"status": "sandbox_ready", "pid": None})
+    logger.warning(
+        "Experiment agent for '%s' exited without results or findings → sandbox_ready (retry)",
+        key,
+    )
+    return "sandbox_ready"
+
+
+@router.get("/sandbox-files/{key:path}")
+def get_sandbox_files(key: str) -> dict[str, Any]:
+    """Return sandbox output files for a workbench item.
+
+    Returns the experiment plan, run instructions, Dockerfile, and findings
+    if they exist.
+
+    Args:
+        key: Namespaced workbench key.
+
+    Returns:
+        Dict with file contents (null if file doesn't exist).
+
+    Raises:
+        HTTPException: 404 if item not found.
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+
+    def _read_if_exists(filename: str) -> str | None:
+        p = output_dir / filename
+        if not p.is_file():
+            return None
+        if p.stat().st_size > _MAX_FILE_READ_BYTES:
+            return f"[File too large to display: {p.stat().st_size} bytes]"
+        return p.read_text(encoding="utf-8")
+
+    return {
+        "key": key,
+        "experiment_plan": _read_if_exists("experiment_plan.md"),
+        "run_sh": _read_if_exists("run.sh"),
+        "dockerfile": _read_if_exists("Dockerfile"),
+        "experiment_py": _read_if_exists("experiment.py"),
+        "requirements_txt": _read_if_exists("requirements.txt"),
+        "findings": _read_if_exists("experiment_findings.md"),
+    }
+
+
+@router.post("/run-experiment/{key:path}", status_code=202)
+def run_experiment(key: str) -> dict[str, Any]:
+    """Launch an experiment runner agent for a sandbox_ready item.
+
+    The agent reads the experiment plan, executes ``bash run.sh`` (Docker),
+    monitors the output, and ensures experiment_results.json and
+    experiment_findings.md are written — including on failure.
+
+    Args:
+        key: Namespaced workbench key.
+
+    Returns:
+        Dict with pid and sandbox_dir.
+
+    Raises:
+        HTTPException: 404/409 if item not found or not sandbox_ready.
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    status = entry.get("status", "queued")
+    if status != "sandbox_ready":
+        raise HTTPException(
+            status_code=409, detail=f"Item not sandbox_ready (status={status})"
+        )
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+
+    try:
+        proc = launch_experiment_agent(item, output_dir)
+    except Exception as exc:
+        logger.error(
+            "Experiment agent launch failed for '%s': %s", key, exc, exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to launch experiment agent"
+        ) from exc
+
+    _server_owned_pids.add(proc.pid)
+    update_workbench_item(
+        key,
+        {
+            "status": "experiment_running",
+            "pid": proc.pid,
+            "log_file": str(output_dir / "experiment_agent.log"),
+        },
+    )
+
+    logger.info("Launched experiment agent for '%s' (pid=%d)", key, proc.pid)
+    return {"key": key, "pid": proc.pid, "sandbox_dir": str(output_dir)}
+
+
+@router.get("/experiment-results/{key:path}")
+def get_experiment_results(key: str) -> dict[str, Any]:
+    """Return experiment results and findings if available.
+
+    Args:
+        key: Namespaced workbench key.
+
+    Returns:
+        Dict with results JSON and findings markdown (null if not yet available).
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+
+    results_json = output_dir / "experiment_results.json"
+    findings_md = output_dir / "experiment_findings.md"
+    experiment_log = output_dir / "experiment.log"
+
+    results = None
+    parse_error = False
+    if results_json.is_file():
+        try:
+            results = json.loads(results_json.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning(
+                "Failed to parse experiment_results.json for '%s': %s", key, exc
+            )
+            parse_error = True
+
+    findings = None
+    if findings_md.is_file() and findings_md.stat().st_size <= _MAX_FILE_READ_BYTES:
+        findings = findings_md.read_text(encoding="utf-8")
+
+    log_tail_str, _ = tail_log(experiment_log) if experiment_log.is_file() else ("", 0)
+
+    return {
+        "key": key,
+        "results": results,
+        "findings": findings,
+        "log_tail": log_tail_str,
+        "completed": results is not None,
+        "parse_error": parse_error,
+    }
+
+
+@router.post("/kill-experiment/{key:path}")
+def kill_experiment(key: str) -> dict[str, Any]:
+    """Kill a running experiment process tree (docker build/run).
+
+    Sends SIGTERM to the process group so both the shell and Docker
+    child are terminated.
+
+    Args:
+        key: Namespaced workbench key.
+
+    Returns:
+        Dict confirming the kill.
+
+    Raises:
+        HTTPException: 404 if item not found, 409 if nothing running.
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    pid = entry.get("pid")
+    if not isinstance(pid, int) or pid <= 1:
+        raise HTTPException(
+            status_code=409, detail="No valid running experiment to kill"
+        )
+
+    if pid not in _server_owned_pids:
+        logger.warning(
+            "Refusing to kill PID %d for '%s' — not owned by this server", pid, key
+        )
+        raise HTTPException(
+            status_code=409, detail="PID not owned by this server process"
+        )
+
+    if not is_agent_running(pid):
+        _server_owned_pids.discard(pid)
+        raise HTTPException(status_code=409, detail="No running experiment to kill")
+
+    try:
+        # Agents are launched with start_new_session=True, so the child's
+        # PGID equals its own PID.  Kill the process group to terminate
+        # the agent and any Docker children without touching the server.
+        os.killpg(pid, signal.SIGTERM)
+        logger.info("Killed experiment process group for '%s' (pgid=%d)", key, pid)
+    except ProcessLookupError:
+        logger.info("Process %d already exited for '%s'", pid, key)
+    except PermissionError:
+        # Fallback: kill just the PID
+        try:
+            os.kill(pid, signal.SIGTERM)
+            logger.info("Killed experiment pid=%d for '%s' (no pgid access)", pid, key)
+        except ProcessLookupError:
+            pass
+
+    _server_owned_pids.discard(pid)
+
+    # Revert to sandbox_ready so the user can retry the experiment
+    update_workbench_item(key, {"status": "sandbox_ready", "pid": None})
+    return {"key": key, "killed": True}
+
+
+@router.get("/experiment-design/{key:path}")
+def get_experiment_design(key: str) -> dict[str, str]:
+    """Return the Experiment Design section from a completed research report.
+
+    Args:
+        key: Namespaced workbench key.
+
+    Returns:
+        Dict with key and markdown content of the Experiment Design section.
+
+    Raises:
+        HTTPException: 404 if item or section not found.
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    research_md = _WORKBENCH_ROOT / slug / "research.md"
+
+    if not research_md.is_file():
+        raise HTTPException(status_code=404, detail="research.md not found")
+
+    content = research_md.read_text(encoding="utf-8")
+    section = _extract_section(content, "Experiment Design")
+    if not section:
+        raise HTTPException(
+            status_code=404, detail="Experiment Design section not found"
+        )
+
+    return {"key": key, "content": section}
+
+
+def _extract_section(content: str, heading: str) -> str:
+    """Extract the body text of a ## heading from markdown.
+
+    Args:
+        content: Raw markdown text.
+        heading: Heading text to find (without ## prefix).
+
+    Returns:
+        Section body as a string, or empty string if not found.
+    """
+    lines = content.splitlines()
+    in_section = False
+    body: list[str] = []
+
+    for line in lines:
+        if line.startswith("## "):
+            if in_section:
+                break
+            if line[3:].strip() == heading:
+                in_section = True
+        elif in_section:
+            body.append(line)
+
+    return "\n".join(body).strip()
+
+
+@router.post("/sandbox/{key:path}", status_code=202)
+def launch_sandbox(key: str) -> dict[str, Any]:
+    """Launch a sandbox agent for a researched workbench item.
+
+    Requires the item to have status 'researched' with experiment_type
+    'programmatic' and a completed research.md file.
+
+    Args:
+        key: Namespaced workbench key (e.g. 'tool::Cursor Tab').
+
+    Returns:
+        Dict with pid, output_dir, and key.
+
+    Raises:
+        HTTPException: 404 if item not found, 409 if not ready for sandbox.
+    """
+    entry = get_workbench_item(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Workbench item '{key}' not found")
+
+    status = entry.get("status", "queued")
+    experiment_type = entry.get("experiment_type")
+    if status != "researched" or experiment_type != "programmatic":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Item not ready for sandbox (status={status}, experiment_type={experiment_type})",
+        )
+
+    item = entry.get("item", {})
+    source_type = entry.get("source_type", "tool")
+    name = item.get("name", "unknown")
+    slug = get_slug(name, source_type)
+    output_dir = _WORKBENCH_ROOT / slug
+    research_md = output_dir / "research.md"
+
+    if not research_md.is_file():
+        raise HTTPException(
+            status_code=409, detail="research.md not found — run research first"
+        )
+
+    try:
+        proc = launch_sandbox_agent(item, research_md, output_dir)
+    except Exception as exc:
+        logger.error("Sandbox launch failed for '%s': %s", key, exc, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Sandbox agent launch failed"
+        ) from exc
+
+    _server_owned_pids.add(proc.pid)
+    logger.info("Launched sandbox agent for '%s' (pid=%d)", key, proc.pid)
+    update_workbench_item(
+        key,
+        {
+            "status": "sandbox_creating",
+            "pid": proc.pid,
+            "log_file": str(output_dir / "sandbox_agent.log"),
+        },
+    )
+
+    return {
+        "key": key,
+        "pid": proc.pid,
+        "output_dir": str(output_dir),
     }
 
 
@@ -135,7 +624,14 @@ def get_research_report(key: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="No research report found")
 
     html_content = report_path.read_text(encoding="utf-8")
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(
+        content=html_content,
+        headers={
+            "Content-Security-Policy": "default-src 'self'; script-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+        },
+    )
 
 
 def _find_ig_post_note(vault: Path, account: str, shortcode: str) -> Path | None:

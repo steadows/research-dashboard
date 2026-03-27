@@ -47,7 +47,9 @@ class TestSandboxSchema:
     def test_update_cost_approved(self, workbench_file):
         add_to_workbench(_sample_tool(), workbench_file=workbench_file)
         key = make_item_key("tool", "VectorDB")
-        update_workbench_item(key, {"cost_approved": True}, workbench_file=workbench_file)
+        update_workbench_item(
+            key, {"cost_approved": True}, workbench_file=workbench_file
+        )
         entry = get_workbench_item(key, workbench_file=workbench_file)
         assert entry["cost_approved"] is True
 

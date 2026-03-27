@@ -1,4 +1,5 @@
 """Tests for sandbox agent — launch, prompt structure, cost detection."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,8 +118,7 @@ def test_sandbox_prompt_contains_experiment_design(tmp_path):
     md = tmp_path / "research.md"
     experiment_design = "Measure index latency for 1000 vectors."
     md.write_text(
-        f"## Overview\nVectorDB tool.\n"
-        f"## Experiment Design\n{experiment_design}\n"
+        f"## Overview\nVectorDB tool.\n## Experiment Design\n{experiment_design}\n"
     )
     item = {"name": "VectorDB", "category": "Database", "source_type": "tool"}
     mock_proc = MagicMock()

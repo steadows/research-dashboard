@@ -51,15 +51,20 @@ def test_write_sandbox_note_frontmatter(vault, tmp_path):
 
 def test_write_sandbox_note_contains_summary(vault, tmp_path):
     sandbox_dir = tmp_path / "sandbox"
-    path = write_sandbox_note(_sample_tool(), "This is the overview.", sandbox_dir, vault)
+    path = write_sandbox_note(
+        _sample_tool(), "This is the overview.", sandbox_dir, vault
+    )
     assert "This is the overview." in path.read_text()
 
 
 def test_write_sandbox_note_includes_findings_text(vault, tmp_path):
     sandbox_dir = tmp_path / "sandbox"
     path = write_sandbox_note(
-        _sample_tool(), "Summary.", sandbox_dir, vault,
-        findings_text="INTEGRATE — significant improvement detected."
+        _sample_tool(),
+        "Summary.",
+        sandbox_dir,
+        vault,
+        findings_text="INTEGRATE — significant improvement detected.",
     )
     content = path.read_text()
     assert "INTEGRATE" in content
