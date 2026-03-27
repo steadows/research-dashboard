@@ -1,16 +1,16 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { WorkbenchStatus } from "./types";
+import type { KanbanColumn as KanbanColumnType } from "./types";
 
 interface KanbanColumnProps {
-  status: WorkbenchStatus;
+  status: KanbanColumnType;
   count: number;
   children?: React.ReactNode;
 }
 
 const columnConfig: Record<
-  WorkbenchStatus,
+  KanbanColumnType,
   { label: string; dotClass: string }
 > = {
   queued: {

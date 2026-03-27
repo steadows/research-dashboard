@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useSWRConfig, mutate as swrMutate } from "swr";
 import { GlowButton } from "@/components/ui/glow-button";
 import { DataReadout } from "@/components/ui/data-readout";
@@ -8,6 +8,114 @@ import { apiMutate } from "@/lib/api";
 import { useInstagramFeed } from "./hooks";
 import { AgenticCardSkeleton, Skeleton } from "./Skeleton";
 import type { InstagramPost } from "./types";
+
+// ─── Refresh Progress Panel ───────────────────────────────────────────────────
+
+const REFRESH_STEPS = [
+  "CONNECTING TO META CLOUD",
+  "FETCHING RECENT VIDEOS",
+  "TRANSCRIBING CONTENT",
+  "EXTRACTING KEYWORDS",
+  "WRITING VAULT NOTES",
+] as const;
+
+// Approximate ms before each step advances (total ~10s before real response)
+const STEP_DELAYS = [0, 1500, 3500, 6000, 8500];
+
+interface RefreshStatusPanelProps {
+  active: boolean;
+  result: { notes_written: number } | null;
+  onDismiss: () => void;
+}
+
+function RefreshStatusPanel({ active, result, onDismiss }: RefreshStatusPanelProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    if (!active) {
+      setCurrentStep(0);
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
+      return;
+    }
+    // Schedule step advances
+    timersRef.current = STEP_DELAYS.map((delay, i) =>
+      setTimeout(() => setCurrentStep(i), delay)
+    );
+    return () => timersRef.current.forEach(clearTimeout);
+  }, [active]);
+
+  if (!active && !result) return null;
+
+  if (result) {
+    return (
+      <div className="border border-accent-green/40 bg-accent-green/5 p-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <svg className="h-4 w-4 text-accent-green shrink-0" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+          </svg>
+          <span className="font-mono text-[11px] text-accent-green uppercase tracking-widest">
+            SYNC COMPLETE &mdash; {result.notes_written} NOTE{result.notes_written !== 1 ? "S" : ""} WRITTEN
+          </span>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="text-[10px] font-mono text-text-muted hover:text-accent-cyan transition-colors"
+        >
+          DISMISS
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-accent-cyan/30 bg-bg-surface p-4 space-y-3">
+      <div className="flex items-center gap-2 text-[10px] font-mono text-accent-cyan uppercase tracking-widest">
+        <span className="h-2 w-2 rounded-full bg-accent-cyan animate-pulse shrink-0" />
+        REFRESH IN PROGRESS
+      </div>
+      <div className="space-y-1.5">
+        {REFRESH_STEPS.map((step, i) => {
+          const done = i < currentStep;
+          const active = i === currentStep;
+          return (
+            <div key={step} className="flex items-center gap-3">
+              <span
+                className={`shrink-0 h-1.5 w-1.5 rounded-full transition-colors ${
+                  done
+                    ? "bg-accent-green"
+                    : active
+                    ? "bg-accent-cyan animate-pulse"
+                    : "bg-surface-high"
+                }`}
+              />
+              <span
+                className={`text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                  done
+                    ? "text-accent-green/70"
+                    : active
+                    ? "text-accent-cyan"
+                    : "text-text-muted"
+                }`}
+              >
+                {step}
+                {done && " \u2713"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {/* Progress bar */}
+      <div className="h-px bg-surface-high w-full overflow-hidden">
+        <div
+          className="h-full bg-accent-cyan transition-all duration-700"
+          style={{ width: `${Math.round(((currentStep + 1) / REFRESH_STEPS.length) * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -148,7 +256,7 @@ function IntelCard({ post }: { post: InstagramPost }) {
       {/* Tags */}
       {post.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-2">
-          {post.tags.map((tag) => (
+          {[...new Set(post.tags)].map((tag) => (
             <span
               key={tag}
               className="text-[9px] font-mono border border-accent-cyan/40 text-accent-cyan px-2 py-0.5"
@@ -322,10 +430,14 @@ function SignalAnalysisSidebar({ posts }: { posts: InstagramPost[] }) {
 
 function formatTimestamp(ts: string): string {
   try {
-    const date = new Date(ts);
+    // Date-only strings ("2026-03-26") are parsed as UTC midnight by Date constructor,
+    // which skews relative time in local timezones. Append T12:00 to anchor mid-day local.
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(ts) ? `${ts}T12:00` : ts;
+    const date = new Date(normalized);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffH = Math.floor(diffMs / 3_600_000);
+    if (diffH < 1) return "JUST NOW";
     if (diffH < 24) return `${diffH}H AGO`;
     const diffD = Math.floor(diffH / 24);
     return `${diffD}D AGO`;
@@ -345,6 +457,7 @@ export function AgenticHubTab() {
   const { mutate } = useSWRConfig();
   const [accountFilter, setAccountFilter] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<{ notes_written: number } | null>(null);
 
   const accounts = useMemo(() => {
     if (!data) return [];
@@ -356,19 +469,30 @@ export function AgenticHubTab() {
   );
 
   const handleRefresh = useCallback(async () => {
-    if (refreshing || accountFilter === "all") return;
+    if (refreshing) return;
     setRefreshing(true);
+    setRefreshResult(null);
     try {
-      await apiMutate("/instagram/refresh", {
-        body: { username: accountFilter, days: 14 },
-      });
+      const targets =
+        accountFilter === "all" ? accounts : [accountFilter];
+
+      // Fire off all ingestion jobs (returns 202 immediately)
+      await Promise.all(
+        targets.map((username) =>
+          apiMutate("/instagram/refresh", { body: { username, days: 14 } })
+        )
+      );
+
+      // Show progress animation for a few seconds, then revalidate feed
+      await new Promise((r) => setTimeout(r, 5000));
       await mutate("/instagram/feed");
+      setRefreshResult({ notes_written: 0 });
     } catch (err) {
       console.error("Refresh failed:", err);
     } finally {
       setRefreshing(false);
     }
-  }, [accountFilter, mutate, refreshing]);
+  }, [accountFilter, accounts, mutate, refreshing]);
 
   return (
     <div className="space-y-6">
@@ -387,7 +511,7 @@ export function AgenticHubTab() {
             variant="secondary"
             className="py-1.5 px-4 text-[10px]"
             onClick={handleRefresh}
-            disabled={refreshing || accountFilter === "all"}
+            disabled={refreshing || (accountFilter === "all" && accounts.length === 0)}
           >
             {refreshing ? "REFRESHING..." : "REFRESH FEED"}
           </GlowButton>
@@ -418,6 +542,13 @@ export function AgenticHubTab() {
           </div>
         </div>
       </div>
+
+      {/* Refresh Status */}
+      <RefreshStatusPanel
+        active={refreshing}
+        result={refreshResult}
+        onDismiss={() => setRefreshResult(null)}
+      />
 
       {/* Content + Sidebar */}
       <div className="flex flex-col lg:flex-row gap-8">

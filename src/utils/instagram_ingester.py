@@ -116,9 +116,45 @@ def fetch_recent_posts(
 
     try:
         loader = instaloader.Instaloader()
+
+        # Load saved session if available — required for most queries
+        session_file = os.environ.get("INSTAGRAM_SESSION_FILE", "")
+        if session_file and Path(session_file).is_file():
+            loader.load_session_from_file(
+                username=Path(session_file).stem, filename=session_file
+            )
+            logger.info("Loaded Instagram session from %s", session_file)
+        else:
+            # Try default instaloader session location (~/.config/instaloader/session-*)
+            default_session_dir = Path.home() / ".config" / "instaloader"
+            sessions = (
+                sorted(default_session_dir.glob("session-*"))
+                if default_session_dir.is_dir()
+                else []
+            )
+            if sessions:
+                session_path = sessions[0]
+                session_user = session_path.name.removeprefix("session-")
+                loader.load_session_from_file(
+                    username=session_user, filename=str(session_path)
+                )
+                logger.info("Loaded default session for %s", session_user)
+            else:
+                logger.warning(
+                    "No Instagram session found — anonymous requests may be rate-limited. "
+                    "Run `instaloader --login YOUR_USERNAME` to create one."
+                )
+
         profile = instaloader.Profile.from_username(loader.context, username)
     except instaloader.exceptions.LoginRequiredException:
         logger.error("Instagram login required — set INSTAGRAM_SESSION_FILE env var")
+        return []
+    except instaloader.exceptions.ConnectionException as exc:
+        logger.error(
+            "Instagram connection error for %s: %s — likely rate-limited or session expired",
+            username,
+            exc,
+        )
         return []
     except Exception as exc:
         logger.error("Failed to load profile %s: %s", username, exc)
@@ -127,48 +163,67 @@ def fetch_recent_posts(
     posts: list[dict[str, Any]] = []
     _MAX_SCAN = 200  # Cap iteration — Instagram API order is not guaranteed
 
-    for i, post in enumerate(profile.get_posts()):
-        if i >= _MAX_SCAN:
-            logger.info("Reached scan limit (%d posts), stopping", _MAX_SCAN)
-            break
-
-        # Check date cutoff — skip (don't break) since API order isn't reliable
-        post_date = post.date_utc
-        if not post_date.tzinfo:
-            post_date = post_date.replace(tzinfo=timezone.utc)
-        if post_date < cutoff:
-            continue
-
-        # Skip already-ingested
-        if post.shortcode in state:
-            continue
-
-        # Skip non-video
-        if not post.is_video:
-            logger.warning("Skipping non-video post %s", post.shortcode)
-            continue
-
-        # Validate shortcode to prevent path traversal (CWE-22)
-        if not _SAFE_SHORTCODE_RE.match(post.shortcode):
-            logger.warning("Skipping post with invalid shortcode: %s", post.shortcode)
-            continue
-
-        date_str = post.date_utc.date().isoformat()
-        if not _ISO_DATE_RE.match(date_str):
-            logger.warning("Skipping post with invalid date: %s", date_str)
-            continue
-
-        posts.append(
-            {
-                "shortcode": post.shortcode,
-                "url": post.video_url,
-                "caption": post.caption or "",
-                "date": date_str,
-                "username": username,
-            }
+    try:
+        post_iter = profile.get_posts()
+    except instaloader.exceptions.ConnectionException as exc:
+        logger.error(
+            "Instagram rate-limited when fetching posts for %s: %s", username, exc
         )
+        return []
 
-        time.sleep(2)
+    for i, post in enumerate(post_iter):
+        try:
+            if i >= _MAX_SCAN:
+                logger.info("Reached scan limit (%d posts), stopping", _MAX_SCAN)
+                break
+
+            # Check date cutoff — skip (don't break) since API order isn't reliable
+            post_date = post.date_utc
+            if not post_date.tzinfo:
+                post_date = post_date.replace(tzinfo=timezone.utc)
+            if post_date < cutoff:
+                continue
+
+            # Skip already-ingested
+            if post.shortcode in state:
+                continue
+
+            # Skip non-video
+            if not post.is_video:
+                logger.warning("Skipping non-video post %s", post.shortcode)
+                continue
+
+            # Validate shortcode to prevent path traversal (CWE-22)
+            if not _SAFE_SHORTCODE_RE.match(post.shortcode):
+                logger.warning(
+                    "Skipping post with invalid shortcode: %s", post.shortcode
+                )
+                continue
+
+            date_str = post.date_utc.date().isoformat()
+            if not _ISO_DATE_RE.match(date_str):
+                logger.warning("Skipping post with invalid date: %s", date_str)
+                continue
+
+            posts.append(
+                {
+                    "shortcode": post.shortcode,
+                    "url": post.video_url,
+                    "caption": post.caption or "",
+                    "date": date_str,
+                    "username": username,
+                }
+            )
+
+            time.sleep(2)
+        except instaloader.exceptions.ConnectionException as exc:
+            logger.error(
+                "Instagram rate-limited during post scan for %s (got %d posts before error): %s",
+                username,
+                len(posts),
+                exc,
+            )
+            break
 
     return posts
 

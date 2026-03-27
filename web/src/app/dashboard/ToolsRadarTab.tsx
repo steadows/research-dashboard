@@ -260,19 +260,19 @@ export function ToolsRadarTab() {
           {/* Mobile: single column */}
           <div className="space-y-4 max-h-[700px] overflow-y-auto pr-2 md:hidden">
             {filtered.map((tool, i) => (
-              <ToolCard key={tool.name} tool={tool} index={i} />
+              <ToolCard key={`${tool.name}-${i}`} tool={tool} index={i} />
             ))}
           </div>
           {/* Desktop: two independent columns (no shared grid rows) */}
           <div className="hidden md:flex gap-4 max-h-[700px] overflow-y-auto pr-2 items-start">
             <div className="flex-1 space-y-4">
               {filtered.filter((_, i) => i % 2 === 0).map((tool, i) => (
-                <ToolCard key={tool.name} tool={tool} index={i * 2} />
+                <ToolCard key={`${tool.name}-${i * 2}`} tool={tool} index={i * 2} />
               ))}
             </div>
             <div className="flex-1 space-y-4">
               {filtered.filter((_, i) => i % 2 === 1).map((tool, i) => (
-                <ToolCard key={tool.name} tool={tool} index={i * 2 + 1} />
+                <ToolCard key={`${tool.name}-${i * 2 + 1}`} tool={tool} index={i * 2 + 1} />
               ))}
             </div>
           </div>

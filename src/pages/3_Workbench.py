@@ -566,7 +566,7 @@ def _handle_sandbox_click(wb_key: str, entry: dict[str, Any]) -> None:
                 "log_file": str(sandbox_log),
             },
         )
-    except FileNotFoundError as exc:
+    except Exception as exc:
         logger.error("Sandbox agent launch failed: %s", exc, exc_info=True)
         st.error(f"Failed to start sandbox: {exc}")
         update_workbench_item(wb_key, {"status": "failed"})
@@ -608,6 +608,13 @@ def _render_researched_panel(wb_key: str, entry: dict[str, Any]) -> None:
     _render_report_buttons(wb_key, research_html, research_md)
 
     if experiment_type == "programmatic":
+        if research_md.exists():
+            exp_design = _extract_section(
+                research_md.read_text(encoding="utf-8"), "Experiment Design"
+            )
+            if exp_design:
+                with st.expander("📋 Experiment Design", expanded=True):
+                    st.markdown(exp_design)
         _render_programmatic_gate(wb_key, entry)
     elif experiment_type == "manual":
         _render_manual_panel(research_md)
@@ -672,7 +679,7 @@ def _render_sandbox_creating_panel(wb_key: str, entry: dict[str, Any]) -> None:
             )
             st.markdown(
                 f'<div style="background:#111827;border:1px solid #1F2937;'
-                f"border-radius:6px;padding:10px 14px;margin:8px 0\">"
+                f'border-radius:6px;padding:10px 14px;margin:8px 0">'
                 f"{feed_html}</div>",
                 unsafe_allow_html=True,
             )
@@ -762,7 +769,7 @@ def _render_results_summary(results_json: Path) -> None:
 
     st.markdown(
         f'<span style="background:{status_color};color:#fff;padding:3px 10px;'
-        f"border-radius:4px;font-size:0.75rem;font-weight:600\">{status_label}</span>"
+        f'border-radius:4px;font-size:0.75rem;font-weight:600">{status_label}</span>'
         f" {safe_html(desc)}",
         unsafe_allow_html=True,
     )
@@ -791,9 +798,7 @@ def _render_sandbox_ready_panel(wb_key: str, entry: dict[str, Any]) -> None:
     # Action buttons
     col_open, col_obsidian = st.columns([1, 1])
     with col_open:
-        if st.button(
-            "📂 Open Sandbox Dir", key=f"workbench__open_sandbox_{wb_key}"
-        ):
+        if st.button("📂 Open Sandbox Dir", key=f"workbench__open_sandbox_{wb_key}"):
             subprocess.Popen(["open", str(output_dir)])  # noqa: S603 S607
 
     with col_obsidian:
@@ -803,10 +808,17 @@ def _render_sandbox_ready_panel(wb_key: str, entry: dict[str, Any]) -> None:
                 vault_name = vault_path.name
                 rel = Path(vault_note_str).relative_to(vault_path)
                 from utils.cockpit_components import build_obsidian_url
+
                 url = build_obsidian_url(vault_name, str(rel))
                 st.link_button("🗂️ Open in Obsidian", url)
             except Exception:
                 pass
+
+    # Experiment plan — show before running
+    experiment_plan_md = output_dir / "experiment_plan.md"
+    if experiment_plan_md.exists():
+        with st.expander("📋 Experiment Plan", expanded=True):
+            st.markdown(experiment_plan_md.read_text(encoding="utf-8"))
 
     # Run instructions
     with st.expander("🐳 Run Experiment"):

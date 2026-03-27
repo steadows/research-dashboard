@@ -1,6 +1,23 @@
 /** Workbench pipeline types */
 
-export type WorkbenchStatus = "queued" | "researching" | "completed";
+/** Backend pipeline statuses */
+export type BackendStatus =
+  | "queued"
+  | "researching"
+  | "researched"
+  | "sandbox_creating"
+  | "sandbox_ready"
+  | "experiment_running"
+  | "experiment_done"
+  | "manual"
+  | "failed"
+  | "completed";
+
+/** Kanban column keys */
+export type KanbanColumn = "queued" | "researching" | "completed";
+
+/** Status used on entries — keeps the backend status for rendering */
+export type WorkbenchStatus = BackendStatus;
 
 export type SourceType = "tool" | "method" | "instagram";
 
@@ -53,6 +70,18 @@ export interface WorkbenchEntry {
   projects?: string[];
   /** Path to vault note (if published to Obsidian) */
   vault_note?: string;
+  /** Whether experiment design has been reviewed */
+  reviewed?: boolean;
+  /** Whether research flagged potential costs */
+  cost_flagged?: boolean;
+  /** Cost/subscription details from research */
+  cost_notes?: string;
+  /** Whether user acknowledged costs */
+  cost_approved?: boolean;
+  /** Path to sandbox output directory */
+  sandbox_dir?: string | null;
+  /** Path to experiment findings */
+  findings_path?: string | null;
 }
 
 /** API response shape — dict keyed by namespaced key */
@@ -61,7 +90,7 @@ export type WorkbenchApiResponse = Record<
   Omit<WorkbenchEntry, "key">
 >;
 
-/** Grouped entries by status for kanban display */
+/** Grouped entries by kanban column */
 export interface WorkbenchColumns {
   queued: WorkbenchEntry[];
   researching: WorkbenchEntry[];

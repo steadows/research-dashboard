@@ -54,13 +54,34 @@ _ALLOWED_TOOLS = [
 # Cost detection
 # ---------------------------------------------------------------------------
 
-_COST_KEYWORDS: frozenset[str] = frozenset({
-    "subscription", "pricing", "paid plan", "premium", "api key required",
-    "credit card", "billing", "license fee", "commercial use", "freemium",
-    "per month", "per year", "per seat", "enterprise plan", "pay-as-you-go",
-    "cost per", "charged", "invoice", "trial period", "pro plan",
-    "business plan", "requires payment", "paid tier", "paid feature",
-})
+_COST_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "subscription",
+        "pricing",
+        "paid plan",
+        "premium",
+        "api key required",
+        "credit card",
+        "billing",
+        "license fee",
+        "commercial use",
+        "freemium",
+        "per month",
+        "per year",
+        "per seat",
+        "enterprise plan",
+        "pay-as-you-go",
+        "cost per",
+        "charged",
+        "invoice",
+        "trial period",
+        "pro plan",
+        "business plan",
+        "requires payment",
+        "paid tier",
+        "paid feature",
+    }
+)
 
 
 def _detect_cost_flags(text: str) -> tuple[bool, str]:
@@ -508,6 +529,7 @@ def launch_research_agent(
             stderr=log_fh,
             cwd=cwd,
             shell=False,
+            start_new_session=True,
         )
     finally:
         # Parent closes its copy — child inherited its own fd via Popen
@@ -630,6 +652,7 @@ def launch_sandbox_agent(
             stderr=log_fh,
             cwd=str(output_dir),
             shell=False,
+            start_new_session=True,
         )
     finally:
         log_fh.close()
@@ -639,6 +662,141 @@ def launch_sandbox_agent(
         name,
         proc.pid,
         slug,
+        log_path,
+    )
+    return proc
+
+
+_EXPERIMENT_RUNNER_PROMPT_TEMPLATE = """\
+<context>
+Item: {name}
+Category: {category}
+Sandbox directory: {output_dir}
+
+The sandbox contains a Docker experiment with these files:
+- Dockerfile — container definition
+- experiment.py — the experiment code
+- run.sh — builds and runs the container
+- experiment_plan.md — describes what will be tested
+
+The experiment writes results to /workspace/ which is volume-mounted
+from the sandbox directory.
+</context>
+
+<objective>
+You are an experiment runner agent. Your job is to:
+
+1. READ experiment_plan.md to understand what the experiment tests and expects
+2. RUN the experiment by executing: bash run.sh
+3. MONITOR the output for errors (Docker build failures, Python exceptions, timeouts)
+4. After the experiment completes (or fails), CHECK for these output files:
+   - experiment_results.json (structured metrics)
+   - experiment_findings.md (human-readable report)
+5. If the experiment SUCCEEDED:
+   - Read experiment_results.json and experiment_findings.md
+   - Verify they are well-formed and contain meaningful content
+   - Report the pass/fail result and key metrics
+6. If the experiment FAILED:
+   - Diagnose WHY it failed from the Docker/Python output
+   - Write experiment_findings.md with:
+     # Experiment: {name}
+     ## Failure Analysis
+     (what went wrong, root cause)
+     ## Docker Output
+     (last 50 lines of output)
+     ## Recommendation
+     NOT_SUITABLE — (reason) OR NEEDS_MORE_WORK — (what to fix)
+   - Write experiment_results.json with:
+     {{"metric_name": "execution", "baseline": null, "result": "failed", \
+"improvement": null, "passed": false, "description": "one-line failure summary"}}
+
+IMPORTANT: If `bash run.sh` hangs for more than 5 minutes, kill it and write
+a failure report. Docker builds that require network but run with --network none
+are the most common failure mode — diagnose and document this clearly.
+</objective>
+
+<style>
+Execute methodically. Read the plan first, run the experiment, then analyse results.
+Do not modify experiment files — run them as-is and report what happens.
+</style>
+
+<response>
+After completing all steps, output a brief summary: PASSED/FAILED, metric, result value.
+</response>
+"""
+
+
+def launch_experiment_agent(
+    item: dict[str, Any],
+    output_dir: Path,
+) -> subprocess.Popen:
+    """Launch experiment runner agent to execute and monitor a Docker experiment.
+
+    Spawns a Claude subprocess that runs ``bash run.sh``, monitors the output,
+    and ensures experiment_results.json and experiment_findings.md are written
+    (including on failure).
+
+    Args:
+        item: Item dict (tool, method, or instagram post).
+        output_dir: Sandbox directory containing experiment files.
+
+    Returns:
+        subprocess.Popen handle. Caller saves .pid to workbench entry.
+
+    Raises:
+        FileNotFoundError: If run.sh doesn't exist or claude CLI not found.
+    """
+    run_sh = output_dir / "run.sh"
+    if not run_sh.is_file():
+        raise FileNotFoundError(f"run.sh not found: {run_sh}")
+
+    claude_bin = shutil.which("claude")
+    if claude_bin is None:
+        raise FileNotFoundError("claude CLI not found in PATH")
+
+    name = item.get("name", "Unknown")
+    category = item.get("category", "Unknown")
+
+    prompt = _EXPERIMENT_RUNNER_PROMPT_TEMPLATE.format(
+        name=_fmt_safe(name),
+        category=_fmt_safe(category),
+        output_dir=str(output_dir),
+    )
+
+    log_path = output_dir / "experiment_agent.log"
+
+    _experiment_tools = ["Read", "Write", "Edit", "Bash", "Glob"]
+
+    cmd = [
+        claude_bin,
+        "-p",
+        prompt,
+        "--model",
+        _SONNET_MODEL,
+        "--allowedTools",
+        ",".join(_experiment_tools),
+        "--output-format",
+        "stream-json",
+        "--verbose",
+    ]
+
+    log_fh = open(log_path, "w", encoding="utf-8")  # noqa: WPS515
+    try:
+        proc = subprocess.Popen(  # noqa: S603
+            cmd,
+            stdout=log_fh,
+            stderr=log_fh,
+            cwd=str(output_dir),
+            shell=False,
+            start_new_session=True,
+        )
+    finally:
+        log_fh.close()
+
+    logger.info(
+        "Launched experiment agent for '%s' (pid=%d), log=%s",
+        name,
+        proc.pid,
         log_path,
     )
     return proc
