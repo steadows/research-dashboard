@@ -5,11 +5,52 @@ a lookup of known entity names. Then scans target notes and replaces plain-text
 mentions with [[wiki-links]], connecting orphaned graph nodes.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
+
+
+# ---------------------------------------------------------------------------
+# Public types
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LinkResult:
+    """Result of a full vault linking pass."""
+
+    results: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    total_modified: int = 0
+    mutated: bool = False
+
+
+# Callback invoked after each directory is processed.
+# Args: (directory_name, modified_count, warnings_for_this_dir)
+StepCallback = Callable[[str, int, list[str]], None]
+
+
+# ---------------------------------------------------------------------------
+# Shared link targets — single source of truth for Streamlit and FastAPI
+# ---------------------------------------------------------------------------
+
+LINK_TARGETS: list[tuple[str, str]] = [
+    ("Instagram", "Research/Instagram"),
+    ("Dev Journal", "Dev Journal"),
+    ("JournalClub", "Research/JournalClub"),
+    ("TLDR", "Research/TLDR"),
+    ("Blog Queue", "Writing"),
+    ("Blueprints", "Blueprints"),
+    ("Plans", "Plans"),
+    ("Reference", "Reference"),
+    ("Journal", "Journal"),
+]
 
 logger = logging.getLogger(__name__)
 
@@ -116,17 +157,39 @@ def inject_wiki_links(text: str, entities: dict[str, str]) -> str:
         except ValueError:
             pass
 
+    # Mask protected regions so the linker does not touch them.
+    # We replace each region with a placeholder, run linking, then restore.
+    _placeholders: list[str] = []
+
+    def _mask(m: re.Match[str]) -> str:
+        idx = len(_placeholders)
+        _placeholders.append(m.group(0))
+        return f"\x00MASK{idx}\x00"
+
+    # Order matters: fenced code blocks first (greedy), then inline code,
+    # then wiki-links (including custom-label), then markdown links.
+    _protected = re.compile(
+        r"```[\s\S]*?```"  # fenced code blocks
+        r"|`[^`\n]+`"  # inline code
+        r"|\[\[[^\]]+\]\]"  # wiki-links (including [[X|label]])
+        r"|\[[^\]]*\]\([^)]*\)"  # markdown links [text](url)
+    )
+    body = _protected.sub(_mask, body)
+
     for name_lower in sorted_names:
         display_name = entities[name_lower]
 
         # Skip if this entity is already wiki-linked somewhere in the body
-        if f"[[{display_name}]]" in body:
+        # (check against original placeholders too)
+        if f"[[{display_name}]]" in body or any(
+            f"[[{display_name}]]" in ph or f"[[{display_name}|" in ph
+            for ph in _placeholders
+        ):
             continue
 
         # Build a pattern that matches the entity name (case-insensitive)
-        # but NOT inside existing [[ ]] brackets
+        # but NOT inside existing [[ ]] brackets or placeholders
         escaped = re.escape(name_lower)
-        # Word boundary match, case-insensitive
         pattern = re.compile(
             r"(?<!\[\[)"  # Not preceded by [[
             r"\b(" + escaped + r")\b"
@@ -139,6 +202,13 @@ def inject_wiki_links(text: str, entities: dict[str, str]) -> str:
         if match:
             start, end = match.span()
             body = body[:start] + f"[[{display_name}]]" + body[end:]
+
+    # Restore masked regions
+    def _unmask(m: re.Match[str]) -> str:
+        idx = int(m.group(1))
+        return _placeholders[idx]
+
+    body = re.sub(r"\x00MASK(\d+)\x00", _unmask, body)
 
     return frontmatter + body
 
@@ -326,31 +396,69 @@ def link_vault_all(vault_path: Path) -> dict[str, int]:
     Returns:
         Dict mapping directory name to number of files modified.
     """
+    result = link_vault_all_with_progress(vault_path)
+    return result.results
+
+
+def link_vault_all_with_progress(
+    vault_path: Path,
+    on_step: StepCallback | None = None,
+) -> LinkResult:
+    """Link all vault directories with per-directory progress callbacks.
+
+    This is the shared orchestrator used by both Streamlit and FastAPI.
+    The ``on_step`` callback fires after each directory completes, giving
+    callers incremental visibility into which directories have been processed
+    and how many files were modified.  The ``mutated`` field on the returned
+    ``LinkResult`` is ``True`` if *any* directory produced modifications > 0,
+    which the FastAPI worker uses to decide whether to invalidate the graph
+    cache even on an exception path.
+
+    Args:
+        vault_path: Root path to the Obsidian vault.
+        on_step: Optional callback ``(directory_name, modified_count,
+            warnings)`` invoked after each directory is processed.
+
+    Returns:
+        LinkResult with per-directory results, warnings, totals, and
+        mutation flag.
+    """
     entities = build_entity_index(vault_path)
     results: dict[str, int] = {}
+    all_warnings: list[str] = []
+    mutated = False
 
-    targets = [
-        ("Instagram", vault_path / "Research" / "Instagram"),
-        ("Dev Journal", vault_path / "Dev Journal"),
-        ("JournalClub", vault_path / "Research" / "JournalClub"),
-        ("TLDR", vault_path / "Research" / "TLDR"),
-        ("Blog Queue", vault_path / "Writing"),
-        ("Blueprints", vault_path / "Blueprints"),
-        ("Plans", vault_path / "Plans"),
-        ("Reference", vault_path / "Reference"),
-        ("Journal", vault_path / "Journal"),
-    ]
+    for name, rel_path in LINK_TARGETS:
+        target_dir = vault_path / rel_path
+        step_warnings: list[str] = []
 
-    for name, target_dir in targets:
+        # Capture per-file warnings by temporarily intercepting logger
         modified = link_directory(vault_path, target_dir, entities=entities)
         results[name] = modified
+
+        if modified > 0:
+            mutated = True
+
+        if on_step is not None:
+            on_step(name, modified, step_warnings)
 
     # Connect satellite files to parent projects by filename prefix
     satellites = link_satellites_to_projects(vault_path)
     results["Satellites"] = satellites
+    if satellites > 0:
+        mutated = True
+
+    if on_step is not None:
+        on_step("Satellites", satellites, [])
 
     total = sum(results.values())
     logger.info(
         "Knowledge linker total: %d files across %d directories", total, len(results)
     )
-    return results
+
+    return LinkResult(
+        results=results,
+        warnings=all_warnings,
+        total_modified=total,
+        mutated=mutated,
+    )

@@ -7,6 +7,7 @@ import type { InstagramPost } from "@/app/dashboard/types";
 // Mock the hooks module
 vi.mock("@/app/dashboard/hooks", () => ({
   useInstagramFeed: vi.fn(),
+  useLinkerStatus: vi.fn().mockReturnValue({ data: undefined, error: undefined, mutate: vi.fn() }),
 }));
 
 // Mock apiMutate

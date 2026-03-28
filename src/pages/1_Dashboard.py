@@ -12,6 +12,7 @@ from typing import Any
 import streamlit as st
 
 from utils.knowledge_linker import (
+    LINK_TARGETS,
     build_entity_index,
     link_directory,
     link_satellites_to_projects,
@@ -67,21 +68,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-_LINK_TARGETS: list[tuple[str, str]] = [
-    ("Instagram", "Research/Instagram"),
-    ("Dev Journal", "Dev Journal"),
-    ("JournalClub", "Research/JournalClub"),
-    ("TLDR", "Research/TLDR"),
-    ("Blog Queue", "Writing"),
-    ("Blueprints", "Blueprints"),
-    ("Plans", "Plans"),
-    ("Reference", "Reference"),
-    ("Journal", "Journal"),
-]
-
-
 def _link_vault_with_progress(vault_path: Path, progress_bar: Any) -> dict[str, int]:
     """Run knowledge linker across all vault directories with progress updates.
+
+    Uses the shared LINK_TARGETS from knowledge_linker module.
 
     Args:
         vault_path: Root path to the Obsidian vault.
@@ -90,20 +80,20 @@ def _link_vault_with_progress(vault_path: Path, progress_bar: Any) -> dict[str, 
     Returns:
         Dict mapping directory name to number of files modified.
     """
-    total_steps = len(_LINK_TARGETS) + 2  # +1 entity index, +1 satellites
+    total_steps = len(LINK_TARGETS) + 2  # +1 entity index, +1 satellites
     results: dict[str, int] = {}
 
     progress_bar.progress(0, text="Building entity index…")
     entities = build_entity_index(vault_path)
 
-    for i, (name, rel_path) in enumerate(_LINK_TARGETS):
+    for i, (name, rel_path) in enumerate(LINK_TARGETS):
         frac = (i + 1) / total_steps
         progress_bar.progress(frac, text=f"Linking {name}…")
         target_dir = vault_path / rel_path
         results[name] = link_directory(vault_path, target_dir, entities=entities)
 
     progress_bar.progress(
-        (len(_LINK_TARGETS) + 1) / total_steps, text="Linking satellites…"
+        (len(LINK_TARGETS) + 1) / total_steps, text="Linking satellites…"
     )
     results["Satellites"] = link_satellites_to_projects(vault_path)
 

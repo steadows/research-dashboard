@@ -10,6 +10,7 @@ from api.routers import (
     content,
     graph,
     ingestion,
+    linker,
     projects,
     research,
     status,
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(analysis.router)
     app.include_router(research.router)
     app.include_router(ingestion.router)
+    app.include_router(linker.router)
 
     # WebSocket
     app.include_router(ws.router)

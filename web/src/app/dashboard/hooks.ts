@@ -10,6 +10,7 @@ import type {
   GraphHealth,
   InstagramPost,
   HomeSummary,
+  LinkerStatus,
 } from "./types";
 
 /** Dashboard stats — metric card counts */
@@ -81,4 +82,14 @@ export interface HubNote {
 
 export function useHubNotes() {
   return useSWR<HubNote[]>("/graph/hub-notes", defaultSWRConfig);
+}
+
+/** Knowledge linker status — polls while running */
+export function useLinkerStatus() {
+  const { data, error, mutate } = useSWR<LinkerStatus>("/linker/status", {
+    ...defaultSWRConfig,
+    refreshInterval: (latestData: LinkerStatus | undefined) =>
+      latestData?.status === "running" ? 1500 : 0,
+  });
+  return { data, error, mutate };
 }

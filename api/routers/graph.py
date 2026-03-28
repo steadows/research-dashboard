@@ -31,6 +31,22 @@ _graph_cache: TTLCache[str, dict[str, Any]] = TTLCache(maxsize=4, ttl=3600)
 _graph_lock = threading.Lock()
 
 
+def invalidate_graph_cache(vault_path: str | None = None) -> None:
+    """Invalidate the graph cache.
+
+    If vault_path is provided, only that key is cleared.
+    Otherwise, the entire cache is cleared.
+
+    Args:
+        vault_path: Optional vault path key to invalidate.
+    """
+    with _graph_lock:
+        if vault_path and vault_path in _graph_cache:
+            del _graph_cache[vault_path]
+        elif vault_path is None:
+            _graph_cache.clear()
+
+
 def _get_graph_data(vault_path: str) -> dict[str, Any]:
     """Build and cache graph, metrics, and communities.
 

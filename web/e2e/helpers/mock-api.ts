@@ -330,6 +330,14 @@ export async function mockAllApiRoutes(page: Page): Promise<void> {
     route.fulfill({ json: MOCK_GRAPH_HEALTH })
   );
 
+  await page.route("**/api/linker/status", (route) =>
+    route.fulfill({ json: { status: "idle" } })
+  );
+
+  await page.route("**/api/linker/run", (route) =>
+    route.fulfill({ json: { status: "accepted", run_id: "mock-run-001" }, status: 202 })
+  );
+
   await page.route("**/api/instagram/feed", (route) =>
     route.fulfill({ json: MOCK_INSTAGRAM })
   );

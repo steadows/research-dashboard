@@ -111,11 +111,25 @@ export type DashboardTab =
   | "home"
   | "blog-queue"
   | "tools-radar"
-  | "research-archive";
+  | "research-archive"
+  | "agentic-hub";
 
 export const DASHBOARD_TABS: { id: DashboardTab; label: string }[] = [
   { id: "home", label: "HOME" },
   { id: "blog-queue", label: "BLOG QUEUE" },
   { id: "tools-radar", label: "TOOLS RADAR" },
   { id: "research-archive", label: "RESEARCH ARCHIVE" },
+  { id: "agentic-hub", label: "AGENTIC HUB" },
 ];
+
+export interface LinkerStatus {
+  run_id: string | null;
+  status: "idle" | "running" | "complete" | "partial" | "error";
+  current_directory: string | null;
+  results: Record<string, number> | null;
+  total_modified: number | null;
+  warnings: string[];
+  started_at: string | null;
+  completed_at: string | null;
+  error: string | null;
+}

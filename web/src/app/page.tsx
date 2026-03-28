@@ -1,7 +1,10 @@
-"use client";
-
+import { Suspense } from "react";
 import { DashboardView } from "./dashboard/DashboardView";
 
 export default function DashboardPage() {
-  return <DashboardView />;
+  return (
+    <Suspense>
+      <DashboardView />
+    </Suspense>
+  );
 }

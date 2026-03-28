@@ -7,6 +7,7 @@ import { DataReadout } from "@/components/ui/data-readout";
 import { apiMutate } from "@/lib/api";
 import { useInstagramFeed } from "./hooks";
 import { AgenticCardSkeleton, Skeleton } from "./Skeleton";
+import { KnowledgeLinkerCard } from "./KnowledgeLinkerCard";
 import type { InstagramPost } from "./types";
 
 // ─── Refresh Progress Panel ───────────────────────────────────────────────────
@@ -614,6 +615,9 @@ export function AgenticHubTab() {
         result={refreshResult}
         onDismiss={() => setRefreshResult(null)}
       />
+
+      {/* Knowledge Linker */}
+      <KnowledgeLinkerCard />
 
       {/* Content + Sidebar */}
       <div className="flex flex-col lg:flex-row gap-8">

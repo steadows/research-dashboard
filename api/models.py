@@ -82,3 +82,17 @@ class SummarizeInstagramRequest(BaseModel):
         ...,
         description="Instagram post dict with transcript, key_points, name, account.",
     )
+
+
+class LinkerStatusResponse(BaseModel):
+    """Response model for the knowledge linker status endpoint."""
+
+    run_id: str | None = None
+    status: Literal["idle", "running", "complete", "partial", "error"] = "idle"
+    current_directory: str | None = None
+    results: dict[str, int] | None = None
+    total_modified: int | None = None
+    warnings: list[str] = Field(default_factory=list)
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
