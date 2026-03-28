@@ -1,0 +1,41 @@
+# Caddyfile — Reverse proxy for production mode.
+# Caddy owns :3000 (public). Routes:
+#   /api/*  → FastAPI on :8000
+#   /ws/*   → FastAPI on :8000 (WebSocket — Caddy handles upgrades automatically)
+#   /*      → Next.js on :3001
+#
+# Usage: caddy run --config scripts/Caddyfile
+
+:3000 {
+	# API routes → FastAPI
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+
+	# WebSocket routes → FastAPI
+	# NOTE: Do NOT add manual Connection/Upgrade headers — Caddy v2
+	# handles WS upgrades automatically. Manual headers break it.
+	handle /ws/* {
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+			transport http {
+				read_timeout 0
+			}
+		}
+	}
+
+	# Everything else → Next.js
+	handle {
+		reverse_proxy 127.0.0.1:3001 {
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-Host {host}
+		}
+	}
+}

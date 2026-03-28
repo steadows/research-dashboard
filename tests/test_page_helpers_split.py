@@ -35,18 +35,10 @@ class TestPageHelpersPure:
         assert not hasattr(page_helpers, "render_context_sources")
 
 
-class TestPageHelpersStModule:
-    """page_helpers_st.py should contain Streamlit-dependent functions."""
+class TestStreamlitRemoved:
+    """page_helpers_st.py should no longer exist after Streamlit deprecation."""
 
-    def test_render_context_sources_in_st_module(self) -> None:
-        """render_context_sources should be importable from page_helpers_st."""
-        from utils.page_helpers_st import render_context_sources
-
-        assert callable(render_context_sources)
-
-    def test_st_module_imports_from_page_helpers(self) -> None:
-        """page_helpers_st should reuse safe_html from page_helpers."""
-        from utils import page_helpers_st
-
-        # Should not duplicate — should import from page_helpers
-        assert hasattr(page_helpers_st, "render_context_sources")
+    def test_page_helpers_st_removed(self) -> None:
+        """page_helpers_st module should not be importable."""
+        with __import__("pytest").raises(ModuleNotFoundError):
+            importlib.import_module("utils.page_helpers_st")

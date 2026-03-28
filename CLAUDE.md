@@ -4,9 +4,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-Research Intelligence Dashboard — a Streamlit app that surfaces actionable insights from automated newsletter ingestion (JournalClub, TLDR). Two views: a global **Dashboard** (blog queue, tools radar, research archive, weekly AI signal) and a **Project Cockpit** (project-scoped workspace with Claude API analysis).
+Research Intelligence Dashboard — surfaces actionable insights from automated newsletter ingestion (JournalClub, TLDR, Instagram). FastAPI backend (`api/`) + Next.js frontend (`web/`) with Claude API for on-demand relevance scoring and deep analysis.
 
-Data flows from scheduled tasks (Gmail → Obsidian vault) through markdown parsers into the Streamlit UI. Claude API (Haiku for quick analysis, Sonnet for deep) provides on-demand item-to-project relevance scoring.
+Data flows from scheduled tasks (Gmail → Obsidian vault) through shared parsers (`src/utils/`) into the FastAPI layer, then consumed by the Next.js frontend.
 
 ## Development Commands
 
@@ -14,8 +14,11 @@ Data flows from scheduled tasks (Gmail → Obsidian vault) through markdown pars
 # Activate environment
 conda activate research-dashboard
 
-# Run locally
-cd src && streamlit run Home.py
+# Run locally (FastAPI :8000, Next.js :3000)
+./scripts/dev.sh
+
+# Run in production mode (Next.js :3001, FastAPI :8000, Caddy :3000)
+./scripts/start.sh
 
 # Run tests
 pytest tests/ -v --tb=short
@@ -30,10 +33,12 @@ ruff format src/ tests/
 
 ## Architecture
 
-### Multipage Streamlit App
-- `src/Home.py` — Entry point, nav shell, CSS injection, env validation
-- `src/pages/1_Dashboard.py` — Global intel feed with 5 tabs (Home, Blog Queue, Tools Radar, Research Archive, Weekly AI Signal)
-- `src/pages/2_Project_Cockpit.py` — Project-scoped workspace with Analyze/Go Deep buttons
+### Dual-Stack Application
+
+- **FastAPI** (`api/`) — REST/WebSocket API layer; imports parsers and business logic from `src/utils/`
+- **Next.js** (`web/`) — React frontend (Tailwind v4, shadcn/ui) consuming FastAPI endpoints
+- **Shared utilities** (`src/utils/`) — Decoupled from any frontend framework; used by both layers
+- **Legacy pages** (`src/legacy_pages/`) — Retired Streamlit pages kept for reference
 
 ### Core Utilities (`src/utils/`)
 - `vault_parser.py` — Obsidian vault project parsing, wiki-link extraction, project index builder
@@ -45,26 +50,16 @@ ruff format src/ tests/
 - `claude_client.py` — Anthropic SDK wrapper with LLM trace logging
 - `prompt_builder.py` — Prompt construction for quick/deep analysis
 - `cockpit_components.py` — Reusable Project Cockpit UI components
-- `page_helpers.py` — Pure utility functions (no Streamlit dependency)
-- `page_helpers_st.py` — Streamlit-dependent UI helpers (render_context_sources)
-- `smart_matcher.py` — Hybrid item-to-project matching (no Streamlit dependency, uses cachetools)
-
-### Dual-Stack Architecture
-
-The project is migrating from Streamlit-only to a dual-stack architecture:
-
-- **Streamlit** (`src/`) — Current frontend, progressively delegating logic to shared utilities
-- **FastAPI** (`api/`) — REST/WebSocket API layer reusing `src/utils/` parsers and business logic
-- **Next.js** (`web/`) — Future React frontend consuming the FastAPI endpoints
-
-Shared utilities in `src/utils/` are being decoupled from Streamlit so they can be imported by both the Streamlit app and the FastAPI layer. Use `cachetools.TTLCache` instead of `@st.cache_data` in any module that needs to be Streamlit-independent.
+- `page_helpers.py` — Pure utility functions
+- `smart_matcher.py` — Hybrid item-to-project matching (uses cachetools)
 
 ### Data Flow
 1. **Scheduled tasks** (Monday 7:30am JournalClub, Friday 8am TLDR) write markdown to Obsidian vault
 2. **Parsers** read vault markdown files, extract structured data + wiki-links
 3. **Project index** maps `[[Project Name]]` wiki-links → items per project
-4. **Dashboard** renders global feeds; **Cockpit** renders project-scoped feeds
-5. **Claude API** provides on-demand analysis (Haiku quick, Sonnet deep) with response caching
+4. **FastAPI** exposes parsed data via REST endpoints; WebSocket for live updates
+5. **Next.js** renders global feeds and project cockpit views
+6. **Claude API** provides on-demand analysis (Haiku quick, Sonnet deep) with response caching
 
 ### Key Data Sources (Obsidian Vault)
 - `Projects/*.md` — Project pages (frontmatter + content)
@@ -82,6 +77,8 @@ Shared utilities in `src/utils/` are being decoupled from Streamlit so they can 
 | `OBSIDIAN_VAULT_PATH` | Yes | Absolute path to Obsidian vault (e.g., `/Users/stevemeadows/SteveVault`) |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
 | `LLM_TRACE` | No | Set to `1` to enable LLM I/O trace logging (debug only) |
+| `API_BACKEND_URL` | No | Override FastAPI base URL (default: `http://localhost:8000`) |
+| `NEXT_PUBLIC_WS_URL` | No | Override WebSocket URL (default: `ws://localhost:8000`) |
 
 ## GSD Workflow
 
@@ -106,36 +103,12 @@ This project follows the GSD protocol. The implementation plan lives at `GSD_PLA
 - Docstrings on all public functions and classes
 - Functions under 50 lines — extract helpers when exceeding
 - `pathlib.Path` for all file operations (never `os.path`)
-- `@st.cache_data(ttl=3600)` on Streamlit-only parser functions; `cachetools.TTLCache` in shared modules
+- `cachetools.TTLCache` for caching in shared modules
 - Module-level logger: `logger = logging.getLogger(__name__)`
-- Session state keys namespaced: `dashboard__*`, `cockpit__*`
-- Never call Claude API directly from page files — route through `claude_client.py`
+- Never call Claude API directly from route handlers — route through `claude_client.py`
 - Immutable data patterns — return new objects, never mutate
 
-## Streamlit Skills Reference
-
-When working on Streamlit features, consult the skill files in `~/.claude/skills/developing-with-streamlit/`:
-
-| Task | Skill |
-|------|-------|
-| Dashboards, KPI cards, metrics | `building-streamlit-dashboards` |
-| Multipage app architecture | `building-streamlit-multipage-apps` |
-| LLM output theming, structured output, cost tracking | `building-streamlit-llm-apps` |
-| Themes, colors, fonts | `creating-streamlit-themes` |
-| Performance, caching, fragments | `optimizing-streamlit-performance` |
-| Design, icons, badges, visual polish | `improving-streamlit-design` |
-| Session state, widget keys, callbacks | `using-streamlit-session-state` |
-| Widget double-click bugs, key-only pattern | `avoiding-streamlit-widget-pitfalls` |
-| Layouts, sidebar, columns, tabs | `using-streamlit-layouts` |
-| Selection widgets (selectbox, toggle, etc.) | `choosing-streamlit-selection-widgets` |
-| Data display, dataframes, charts | `displaying-streamlit-data` |
-| Code organization, splitting modules | `organizing-streamlit-code` |
-
-Parent skill with routing guide: `~/.claude/skills/developing-with-streamlit/SKILL.md`
-
-## Frontend Skills Reference (Next.js Migration)
-
-Symlinked from `portfolio-v2` for the dual-stack migration:
+## Frontend Skills Reference
 
 | Skill | Purpose |
 |-------|---------|
@@ -150,7 +123,6 @@ Full design token spec lives at `docs/designs/DESIGN_SYSTEM.md`. Includes glow s
 
 ## LLM Trace Logging
 
-Per `/streamlit-llm-trace` skill:
 - Use a dedicated logger: `_llm_trace_log = logging.getLogger("llm_trace")`
 - `_llm_trace_log.propagate = False` — **CRITICAL**, prevents CloudWatch bleed-through
 - Before call: log full prompt at DEBUG (LLM_TRACE=1 only)
@@ -163,7 +135,7 @@ Per `/streamlit-llm-trace` skill:
 - Minimum coverage target: 80%
 - Capturing mocks at filesystem boundary (vault reads) and Claude API boundary
 - Test files: `tests/test_*.py`
-- Round-trip integration tests verify full pipeline: vault → parser → index → cockpit feed
+- Round-trip integration tests verify full pipeline: vault → parser → index → API response
 
 ## Git Conventions
 

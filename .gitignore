@@ -48,14 +48,22 @@ src/.next/
 .playwright-mcp/
 web/playwright-report/
 
-# Scripts (local-only)
-scripts/
+# Scripts — ignore everything except tracked deliverables
+scripts/*
+!scripts/dev.sh
+!scripts/start.sh
+!scripts/build-icns.sh
+!scripts/build-app.sh
+!scripts/launcher.sh
+!scripts/Caddyfile
 
 # Research docs (local-only)
 docs/research/
 
 # Screenshots / images (local-only)
 *.png
+!assets/app-icon.png
+!scripts/AppIcon.icns
 
 .axon/
 .claude/
