@@ -150,13 +150,13 @@ frontend_ready=false
 api_ready=false
 
 while (( elapsed < TIMEOUT )); do
-  if ! frontend_ready; then
+  if ! $frontend_ready; then
     if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:3000 2>/dev/null | grep -qE '^[2-3][0-9][0-9]$'; then
       frontend_ready=true
     fi
   fi
 
-  if ! api_ready; then
+  if ! $api_ready; then
     if curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:8000/api/papers 2>/dev/null | grep -qE '^[2-3][0-9][0-9]$'; then
       api_ready=true
     fi
