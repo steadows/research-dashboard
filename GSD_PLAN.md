@@ -2489,26 +2489,26 @@ Requires Session 24 complete (API + Next.js infrastructure in place).
 
 Extract shared orchestration into `knowledge_linker.py` and prove idempotency before exposing the API. *(critique CRITICAL-2, HIGH-1)*
 
-- [ ] **Extract `LINK_TARGETS`** from `src/pages/1_Dashboard.py` into `src/utils/knowledge_linker.py` as a module-level constant. Update `1_Dashboard.py` to import from the shared module. Single source of truth for both Streamlit and FastAPI.
-- [ ] **Add `link_vault_all_with_progress()` orchestrator** to `knowledge_linker.py` — accepts a **`on_step(directory: str, modified_count: int, warnings: list[str])` callback** invoked after each directory completes. Returns a typed `LinkResult` dataclass with `results: dict[str, int]`, `warnings: list[str]`, `total_modified: int`, `mutated: bool`. This replaces the ad hoc orchestration in both `1_Dashboard.py` and the future FastAPI worker. **The `on_step` callback is the mutation-tracking contract:** the FastAPI worker accumulates `mutated = any(modified_count > 0)` in its own closure from the callback. If the orchestrator throws mid-loop, the worker's except block already knows whether earlier directories produced mutations — no need to inspect a return value that never arrived. *(critique follow-up: exception path must know if mutations occurred)*
-- [ ] **Idempotency tests** — add `tests/test_knowledge_linker_idempotency.py`:
+- [x] **Extract `LINK_TARGETS`** from `src/pages/1_Dashboard.py` into `src/utils/knowledge_linker.py` as a module-level constant. Update `1_Dashboard.py` to import from the shared module. Single source of truth for both Streamlit and FastAPI.
+- [x] **Add `link_vault_all_with_progress()` orchestrator** to `knowledge_linker.py` — accepts a **`on_step(directory: str, modified_count: int, warnings: list[str])` callback** invoked after each directory completes. Returns a typed `LinkResult` dataclass with `results: dict[str, int]`, `warnings: list[str]`, `total_modified: int`, `mutated: bool`. This replaces the ad hoc orchestration in both `1_Dashboard.py` and the future FastAPI worker. **The `on_step` callback is the mutation-tracking contract:** the FastAPI worker accumulates `mutated = any(modified_count > 0)` in its own closure from the callback. If the orchestrator throws mid-loop, the worker's except block already knows whether earlier directories produced mutations — no need to inspect a return value that never arrived. *(critique follow-up: exception path must know if mutations occurred)*
+- [x] **Idempotency tests** — add `tests/test_knowledge_linker_idempotency.py`:
   - Double-run: link a file, link it again → zero new modifications
   - Code blocks: entities inside `` ` `` or ``` ``` ``` are NOT linked
   - Existing wiki-links: `[[Project Name]]` is not double-bracketed to `[[[[Project Name]]]]`
   - Custom-label wiki-links: `[[Project Name|custom label]]` is not re-linked
   - Markdown links: `[text](url)` containing entity names is not corrupted
   - Partial failure retry: link 5 of 10 dirs, simulate crash, rerun → vault is consistent
-- [ ] **Fix any idempotency bugs** found by the tests above before proceeding
+- [x] **Fix any idempotency bugs** found by the tests above before proceeding
 
 ### [24.6b] Add Pydantic Model [x]
 
-- [ ] Add `LinkerStatusResponse` to `api/models.py`:
+- [x] Add `LinkerStatusResponse` to `api/models.py`:
   - Fields: `run_id` (str|None — UUID per run), `status` (Literal["idle","running","complete","partial","error"]), `current_directory` (str|None), `results` (dict[str,int]|None), `total_modified` (int|None), `warnings` (list[str] — per-file failures surfaced from `link_directory()`), `started_at` (str|None), `completed_at` (str|None), `error` (str|None)
   - *(critique HIGH-3: added `run_id`, `warnings`, and `partial` status for partial-failure visibility)*
 
 ### [24.6c] Create Linker Router [x]
 
-- [ ] Create `api/routers/linker.py`:
+- [x] Create `api/routers/linker.py`:
   - In-memory `_job` dict + `threading.Lock` for thread-safe reads/writes. **Single-worker only** — assert `--workers 1` in launch scripts *(critique CRITICAL-1)*
   - `_job` stores: `run_id` (UUID), `status` ("idle"|"running"|"complete"|"partial"|"error"), `current_directory`, `results`, `warnings`, `started_at`, `completed_at`, `error`
   - `POST /api/linker/run` — checks if running (409), generates `run_id`, sets "running", spawns `BackgroundTasks`, returns 202 with `{"status": "accepted", "run_id": "..."}`
@@ -2520,27 +2520,27 @@ Extract shared orchestration into `knowledge_linker.py` and prove idempotency be
 
 ### [24.6d] Register Router + Graph Cache Invalidation [x]
 
-- [ ] **Add public `invalidate_graph_cache()` helper** to `api/routers/graph.py` — acquires `_graph_lock`, clears only the relevant vault key from `_graph_cache` (not the entire cache), releases lock. *(critique HIGH-4: no cross-router private imports)*
-- [ ] Import `linker` from `api.routers`, add `app.include_router(linker.router)` in `api/main.py` after `ingestion`
-- [ ] Verify Next.js proxy config (`/api/:path*` wildcard) covers `/api/linker/*` — no changes expected
-- [ ] **Document `--workers 1` requirement** in `scripts/dev.sh` and `scripts/start.sh` uvicorn flags *(critique CRITICAL-1)*
+- [x] **Add public `invalidate_graph_cache()` helper** to `api/routers/graph.py` — acquires `_graph_lock`, clears only the relevant vault key from `_graph_cache` (not the entire cache), releases lock. *(critique HIGH-4: no cross-router private imports)*
+- [x] Import `linker` from `api.routers`, add `app.include_router(linker.router)` in `api/main.py` after `ingestion`
+- [x] Verify Next.js proxy config (`/api/:path*` wildcard) covers `/api/linker/*` — no changes expected
+- [x] **Document `--workers 1` requirement** in `scripts/dev.sh` and `scripts/start.sh` uvicorn flags *(critique CRITICAL-1)*
 
 ### [24.6e] Wire AgenticHubTab into Dashboard [x]
 
-- [ ] Add `"agentic-hub"` to `DashboardTab` union type in `web/src/app/dashboard/types.ts`
-- [ ] Add `{ id: "agentic-hub", label: "AGENTIC HUB" }` to `DASHBOARD_TABS` array
-- [ ] Add lazy import + render for `AgenticHubTab` in `web/src/app/dashboard/DashboardView.tsx`
-- [ ] **Persist active tab in URL hash or query param** (e.g. `?tab=agentic-hub`) so page refresh returns to the Agentic Hub tab, not "home". Without this, `useLinkerStatus` rehydration only helps after the user manually navigates back. *(critique follow-up: tab persistence for long-running surface)*
+- [x] Add `"agentic-hub"` to `DashboardTab` union type in `web/src/app/dashboard/types.ts`
+- [x] Add `{ id: "agentic-hub", label: "AGENTIC HUB" }` to `DASHBOARD_TABS` array
+- [x] Add lazy import + render for `AgenticHubTab` in `web/src/app/dashboard/DashboardView.tsx`
+- [x] **Persist active tab in URL hash or query param** (e.g. `?tab=agentic-hub`) so page refresh returns to the Agentic Hub tab, not "home". Without this, `useLinkerStatus` rehydration only helps after the user manually navigates back. *(critique follow-up: tab persistence for long-running surface)*
 
 ### [24.6f] Add Knowledge Linker Card to Agentic Hub [x]
 
-- [ ] **Create `useLinkerStatus` hook** in `web/src/hooks/` (or `web/src/app/dashboard/hooks.ts`):
+- [x] **Create `useLinkerStatus` hook** in `web/src/hooks/` (or `web/src/app/dashboard/hooks.ts`):
   - On mount: fetch `GET /api/linker/status` to rehydrate state (handles page refresh mid-run) *(critique HIGH-6)*
   - While `status === "running"`: poll every 1.5s
   - On `status === "complete"|"partial"|"error"`: stop polling
   - Return typed `LinkerStatus` matching the Pydantic model
   - Timeout guard: if `started_at` is >30s old and still "running", show "may have failed" warning
-- [ ] **Create `KnowledgeLinkerCard` component** (extract to `web/src/app/dashboard/KnowledgeLinkerCard.tsx`):
+- [x] **Create `KnowledgeLinkerCard` component** (extract to `web/src/app/dashboard/KnowledgeLinkerCard.tsx`):
   - "LINK VAULT" `GlowButton` fires `POST /api/linker/run`, stores returned `run_id`
   - State driven by `useLinkerStatus` hook, not local state machine
   - While running: show `current_directory` with pulsing cyan dot
@@ -2549,14 +2549,14 @@ Extract shared orchestration into `knowledge_linker.py` and prove idempotency be
   - On error: red error message
   - **On 409: immediately fetch `/api/linker/status` and join the active polling loop** — do NOT dead-end at a static "ALREADY RUNNING" banner *(critique HIGH-7)*
   - Card styling: `bg-bg-surface border border-accent-cyan/20 p-5`, header "KNOWLEDGE LINKER" in `font-headline text-accent-cyan uppercase tracking-widest`
-- [ ] **Add TypeScript type** for `LinkerStatusResponse` in `web/src/app/dashboard/types.ts`
-- [ ] **Update mock routes** in `web/e2e/helpers/mock-api.ts` for `/api/linker/*` endpoints
+- [x] **Add TypeScript type** for `LinkerStatusResponse` in `web/src/app/dashboard/types.ts`
+- [x] **Update mock routes** in `web/e2e/helpers/mock-api.ts` for `/api/linker/*` endpoints
 
 ### [24.6g] API Endpoint Tests [x]
 
 Depends on [24.6a]–[24.6d] (shared orchestrator, model, router, graph helper). No frontend dependency.
 
-- [ ] Create `tests/test_linker_router.py`:
+- [x] Create `tests/test_linker_router.py`:
   - **Use `reset_job()` in fixture** to isolate test state between runs *(critique HIGH-8)*
   - **Patch `api.routers.linker.*`** (router-level imports), not just `utils.knowledge_linker.*`
   - `POST /api/linker/run` returns 202 with `run_id`
@@ -2571,7 +2571,7 @@ Depends on [24.6a]–[24.6d] (shared orchestrator, model, router, graph helper).
 
 ### [24.6h] Frontend Tests [x]
 
-- [ ] Update `web/src/__tests__/AgenticHubTab.test.tsx` with Knowledge Linker card states:
+- [x] Update `web/src/__tests__/AgenticHubTab.test.tsx` with Knowledge Linker card states:
   - Idle render with "LINK VAULT" button
   - Running state with directory progress
   - Complete state with results summary
@@ -2580,14 +2580,14 @@ Depends on [24.6a]–[24.6d] (shared orchestrator, model, router, graph helper).
 
 ### [24.6i] Quality Gate [x]
 
-- [ ] `ruff check src/ api/ tests/` passes
-- [ ] `pytest tests/ -v --tb=short` — all tests pass including idempotency + linker router tests
-- [ ] `cd web && npm test` — frontend tests pass including AgenticHubTab updates
-- [ ] Manual: click "LINK VAULT" in Next.js Agentic Hub → see progress → see results summary
-- [ ] Manual: **warm `/api/graph/health` first**, run linker, verify graph health returns updated metrics *(critique MEDIUM-2)*
-- [ ] Manual: trigger concurrent run **via raw API call** (not UI button) → confirm 409 response *(critique MEDIUM-2)*
-- [ ] Manual: refresh page mid-run → browser returns to Agentic Hub tab (URL param persisted) AND card rehydrates showing current progress
-- [ ] Manual: run linker twice on already-linked vault → second run reports 0 modifications (idempotency)
+- [x] `ruff check src/ api/ tests/` passes
+- [x] `pytest tests/ -v --tb=short` — all tests pass including idempotency + linker router tests
+- [x] `cd web && npm test` — frontend tests pass including AgenticHubTab updates
+- [x] Manual: click "LINK VAULT" in Next.js Agentic Hub → see progress → see results summary
+- [x] Manual: **warm `/api/graph/health` first**, run linker, verify graph health returns updated metrics *(critique MEDIUM-2)*
+- [x] Manual: trigger concurrent run **via raw API call** (not UI button) → confirm 409 response *(critique MEDIUM-2)*
+- [x] Manual: refresh page mid-run → browser returns to Agentic Hub tab (URL param persisted) AND card rehydrates showing current progress
+- [x] Manual: run linker twice on already-linked vault → second run reports 0 modifications (idempotency)
 
 **Commit checkpoint:**
 ```bash
