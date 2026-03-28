@@ -49,6 +49,7 @@ CONDA_SH=""
 find_conda_sh() {
   local candidates=(
     "${CONDA_EXE:+$(dirname "$(dirname "$CONDA_EXE")")/etc/profile.d/conda.sh}"
+    "/opt/anaconda3/etc/profile.d/conda.sh"
     "/opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh"
     "$HOME/miniconda3/etc/profile.d/conda.sh"
     "$HOME/anaconda3/etc/profile.d/conda.sh"
