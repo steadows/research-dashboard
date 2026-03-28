@@ -34,15 +34,8 @@ if [[ ! -f "$PROJECT_ROOT/api/main.py" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Check Caddy is installed
-# ---------------------------------------------------------------------------
-if ! command -v caddy &>/dev/null; then
-  osascript -e 'display dialog "Research Dashboard requires Caddy as a reverse proxy.\n\nInstall it with:\n    brew install caddy\n\nThen relaunch the app." with title "Missing Dependency: caddy" buttons {"OK"} default button "OK" with icon stop'
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# 4. Discover and activate conda environment
+# 3. Discover and activate conda environment (must happen before caddy check,
+#    since caddy may be installed inside the conda env)
 # ---------------------------------------------------------------------------
 CONDA_SH=""
 
@@ -64,13 +57,21 @@ find_conda_sh() {
 }
 
 if ! CONDA_SH="$(find_conda_sh)"; then
-  osascript -e 'display dialog "Research Dashboard: Could not find conda.\n\nInstall Miniconda from https://docs.conda.io/en/latest/miniconda.html and ensure the research-dashboard environment exists.\n\nSearched:\n• /opt/homebrew/Caskroom/miniconda/base/\n• ~/miniconda3/\n• ~/anaconda3/" with title "conda Not Found" buttons {"OK"} default button "OK" with icon stop'
+  osascript -e 'display dialog "Research Dashboard: Could not find conda.\n\nInstall Miniconda from https://docs.conda.io/en/latest/miniconda.html and ensure the research-dashboard environment exists.\n\nSearched:\n• /opt/anaconda3/\n• /opt/homebrew/Caskroom/miniconda/base/\n• ~/miniconda3/\n• ~/anaconda3/" with title "conda Not Found" buttons {"OK"} default button "OK" with icon stop'
   exit 1
 fi
 
 # shellcheck source=/dev/null
 source "$CONDA_SH"
 conda activate research-dashboard
+
+# ---------------------------------------------------------------------------
+# 4. Check Caddy is installed (after conda activation — caddy may be in env)
+# ---------------------------------------------------------------------------
+if ! command -v caddy &>/dev/null; then
+  osascript -e 'display dialog "Research Dashboard requires Caddy as a reverse proxy.\n\nInstall with:\n    conda install -c conda-forge caddy\n\nThen relaunch the app." with title "Missing Dependency: caddy" buttons {"OK"} default button "OK" with icon stop'
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Source .env.local if present
