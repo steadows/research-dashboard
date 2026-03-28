@@ -100,8 +100,9 @@ check_rid_healthy() {
 if ports_in_use; then
   if check_rid_healthy; then
     # Already running and healthy — just open the browser
-    if open -a "Google Chrome" --args --app=http://localhost:3000 2>/dev/null; then
-      :
+    CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    if [[ -x "$CHROME_BIN" ]]; then
+      "$CHROME_BIN" --app=http://localhost:3000 &>/dev/null &
     else
       open http://localhost:3000
     fi
@@ -190,8 +191,11 @@ fi
 # ---------------------------------------------------------------------------
 # 11. Open PWA-style chromeless window
 # ---------------------------------------------------------------------------
-if open -a "Google Chrome" --args --app=http://localhost:3000 2>/dev/null; then
-  :
+# NOTE: `open -a Chrome --args` is unreliable when Chrome is already running —
+# macOS swallows --args. Launch the binary directly for PWA mode.
+CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+if [[ -x "$CHROME_BIN" ]]; then
+  "$CHROME_BIN" --app=http://localhost:3000 &>/dev/null &
 else
   open http://localhost:3000
 fi
